@@ -46,7 +46,6 @@ export class AudioManager extends Events {
 	private gainNodes: Map<string, GainNode> = new Map();
 	private audioContext: AudioContext | null = null;
 	private orphanTimers: Map<string, number> = new Map();
-	private pendingOrphans: Set<string> = new Set();
 	private _masterVolume = 1.0;
 	private _audioFolder = "";
 	private fades = new FadeEngine();
@@ -182,7 +181,6 @@ export class AudioManager extends Events {
 
 	register(def: AudioTrackDef): void {
 		this.clearOrphanTimer(def.id);
-		this.pendingOrphans.delete(def.id);
 
 		const existing = this.tracks.get(def.id);
 		if (existing) {
@@ -203,7 +201,6 @@ export class AudioManager extends Events {
 	}
 
 	unregister(id: string): void {
-		this.pendingOrphans.delete(id);
 		this.fades.cancel(id);
 		this.fadeMultipliers.delete(id);
 		this.playFades.delete(id);
@@ -551,7 +548,8 @@ export class AudioManager extends Events {
 			if (!state) return;
 			if (this.hasLivePlayerElement(id)) return;
 			if (state.playState === PlayState.Playing || state.playState === PlayState.Paused) {
-				this.pendingOrphans.add(id);
+				// Live element gone but track still in use; wait for it to stop, then
+				// cleanupIfOrphaned will pick it up.
 				return;
 			}
 			this.unregister(id);
@@ -570,11 +568,7 @@ export class AudioManager extends Events {
 	}
 
 	private cleanupIfOrphaned(id: string): void {
-		if (!this.pendingOrphans.has(id)) return;
-		if (this.hasLivePlayerElement(id)) {
-			this.pendingOrphans.delete(id);
-			return;
-		}
+		if (this.hasLivePlayerElement(id)) return;
 		this.unregister(id);
 	}
 
@@ -590,7 +584,6 @@ export class AudioManager extends Events {
 		this.fades.destroy();
 		this.fadeMultipliers.clear();
 		this.playFades.clear();
-		this.pendingOrphans.clear();
 		this._activeScope.clear();
 		for (const [, timer] of this.orphanTimers) {
 			window.clearTimeout(timer);
