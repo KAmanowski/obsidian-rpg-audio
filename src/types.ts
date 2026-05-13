@@ -15,6 +15,17 @@ export interface AudioTrackDef {
 	stops: string[];
 	resumes: string[];
 	pauses: string[];
+	scope: string[];
+}
+
+export type TrackAction = "play" | "pause" | "stop" | "resume";
+export type TrackCauseKind = "user" | "directive" | "scope" | "autoplay" | "system" | "ended";
+
+export interface TrackCause {
+	action: TrackAction;
+	kind: TrackCauseKind;
+	detail?: string;
+	at: number;
 }
 
 export interface AudioTrackState {
@@ -23,12 +34,14 @@ export interface AudioTrackState {
 	volume: number;
 	currentIndex: number;
 	error: string | null;
+	lastCause: TrackCause | null;
 }
 
 export const EVENT_TRACK_CHANGED = "track-changed";
 export const EVENT_TRACKS_UPDATED = "tracks-updated";
 export const EVENT_MASTER_VOLUME = "master-volume";
 export const EVENT_ALLOW_AUTOPLAY = "allow-autoplay";
+export const EVENT_ACTIVE_SCOPE_CHANGED = "active-scope-changed";
 
 export const SIDEBAR_VIEW_TYPE = "rpg-audio-sidebar";
 
