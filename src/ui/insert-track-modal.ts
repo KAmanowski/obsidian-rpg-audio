@@ -28,6 +28,10 @@ function generateCodeBlock(opts: {
 	pauses: string;
 	resumes: string;
 	scope: string;
+	start: string;
+	end: string;
+	fadein: string;
+	fadeout: string;
 }): string {
 	const lines: string[] = [];
 	lines.push(`id: ${opts.id}`);
@@ -40,6 +44,10 @@ function generateCodeBlock(opts: {
 	if (opts.stops.trim()) lines.push(`stops: ${opts.stops.trim()}`);
 	if (opts.pauses.trim()) lines.push(`pauses: ${opts.pauses.trim()}`);
 	if (opts.resumes.trim()) lines.push(`resumes: ${opts.resumes.trim()}`);
+	if (opts.start.trim()) lines.push(`start: ${opts.start.trim()}`);
+	if (opts.end.trim()) lines.push(`end: ${opts.end.trim()}`);
+	if (opts.fadein.trim()) lines.push(`fadein: ${opts.fadein.trim()}`);
+	if (opts.fadeout.trim()) lines.push(`fadeout: ${opts.fadeout.trim()}`);
 
 	if (opts.files.length === 1) {
 		lines.push(`file: ${opts.files[0]}`);
@@ -94,6 +102,10 @@ export class InsertTrackModal extends Modal {
 	private pauses = "";
 	private resumes = "";
 	private scopeInput = "";
+	private startInput = "";
+	private endInput = "";
+	private fadeinInput = "";
+	private fadeoutInput = "";
 
 	private fileListEl: HTMLElement | null = null;
 	private insertBtn: HTMLButtonElement | null = null;
@@ -238,6 +250,38 @@ export class InsertTrackModal extends Modal {
 					// eslint-disable-next-line obsidianmd/ui/sentence-case
 					.setPlaceholder("ambience")
 					.onChange(value => { this.resumes = value; }));
+
+			new Setting(details)
+				.setName("Start time")
+				.setDesc("Seek to this position on play, for example 0:25 or 1:05:30 (single-file tracks only)")
+				.addText(text => text
+					// eslint-disable-next-line obsidianmd/ui/sentence-case
+					.setPlaceholder("0:25")
+					.onChange(value => { this.startInput = value; }));
+
+			new Setting(details)
+				.setName("End time")
+				.setDesc("Stop or loop at this position, for example 1:33 (single-file tracks only)")
+				.addText(text => text
+					// eslint-disable-next-line obsidianmd/ui/sentence-case
+					.setPlaceholder("1:33")
+					.onChange(value => { this.endInput = value; }));
+
+			new Setting(details)
+				.setName("Fade in duration")
+				.setDesc("Seconds to fade from silence to full volume after the start time, for example 3")
+				.addText(text => text
+					// eslint-disable-next-line obsidianmd/ui/sentence-case
+					.setPlaceholder("3")
+					.onChange(value => { this.fadeinInput = value; }));
+
+			new Setting(details)
+				.setName("Fade out duration")
+				.setDesc("Seconds to fade from full volume to silence before the end time, for example 5")
+				.addText(text => text
+					// eslint-disable-next-line obsidianmd/ui/sentence-case
+					.setPlaceholder("5")
+					.onChange(value => { this.fadeoutInput = value; }));
 		});
 
 		// Insert button
@@ -327,6 +371,10 @@ export class InsertTrackModal extends Modal {
 			pauses: this.pauses,
 			resumes: this.resumes,
 			scope: this.scopeInput,
+			start: this.startInput,
+			end: this.endInput,
+			fadein: this.fadeinInput,
+			fadeout: this.fadeoutInput,
 		});
 		this.onInsert(block);
 		this.close();

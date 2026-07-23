@@ -14,6 +14,7 @@ import {
 	MIN_FADE_DURATION_MS,
 } from "../types";
 import {createPlayerControls, updatePlayPauseButton, PlayerControlsElements} from "./player-controls";
+import {formatTimestamp} from "./code-block-player";
 
 function formatCause(cause: TrackCause): string {
 	const kindLabel = cause.kind === "user" ? "" : ` (${cause.kind})`;
@@ -334,6 +335,17 @@ export class RpgAudioSidebarView extends ItemView {
 			scopeEl.createSpan({text: track.def.scope.join(", ")});
 		} else {
 			scopeEl.createSpan({cls: "rpg-audio-debug-muted", text: "no scope"});
+		}
+
+		if (track.def.startTime !== null || track.def.endTime !== null) {
+			const regionEl = scopeEl.createDiv({cls: "rpg-audio-sidebar-track-debug"});
+			regionEl.createSpan({cls: "rpg-audio-debug-label", text: "region: "});
+			const startLabel = track.def.startTime !== null ? formatTimestamp(track.def.startTime) : "start";
+			const endLabel = track.def.endTime !== null ? formatTimestamp(track.def.endTime) : "end";
+			let regionText = `${startLabel} – ${endLabel}`;
+			if (track.def.fadeInDuration > 0) regionText += ` | fadein: ${track.def.fadeInDuration}s`;
+			if (track.def.fadeOutDuration > 0) regionText += ` | fadeout: ${track.def.fadeOutDuration}s`;
+			regionEl.createSpan({text: regionText});
 		}
 
 		if (track.lastCause) {

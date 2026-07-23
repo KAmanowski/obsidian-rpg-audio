@@ -57,6 +57,7 @@ export class AudioManager extends Events {
 	private _allowAutoplay = false;
 	private playFades: Map<string, "out" | "in"> = new Map();
 	private _activeScope: Set<string> = new Set();
+	private regionFadeMultipliers: Map<string, number> = new Map();
 
 	constructor(app: App) {
 		super();
@@ -218,6 +219,7 @@ export class AudioManager extends Events {
 		try {
 			this.fades.cancel(id);
 			this.fadeMultipliers.delete(id);
+			this.regionFadeMultipliers.delete(id);
 			this.playFades.delete(id);
 			this.stop(id);
 			const el = this.audioElements.get(id);
@@ -330,7 +332,10 @@ export class AudioManager extends Events {
 
 		if (!(state.playState === PlayState.Paused && el.src)) {
 			el.src = resourceUrl;
-			el.loop = state.def.loop && state.def.files.length === 1;
+			el.loop = state.def.loop && state.def.files.length === 1 && !this.hasRegion(state.def);
+			if (state.def.startTime !== null) {
+				el.currentTime = state.def.startTime;
+			}
 		}
 
 		const wasPaused = state.playState === PlayState.Paused;
@@ -339,6 +344,9 @@ export class AudioManager extends Events {
 			state.playState = PlayState.Playing;
 			state.error = null;
 			state.lastCause = buildCause(wasPaused ? "resume" : "play", cause);
+			if (this.hasRegion(state.def)) {
+				this.regionFadeMultipliers.set(id, this.computeRegionFade(state.def, el.currentTime));
+			}
 			if (useCrossfadeIn) {
 				this.fadeIn(id, this._crossfadeDuration);
 			} else if (usePlayFadeIn) {
@@ -448,6 +456,7 @@ export class AudioManager extends Events {
 
 		this.fades.cancel(id);
 		this.fadeMultipliers.delete(id);
+		this.regionFadeMultipliers.delete(id);
 		this.playFades.delete(id);
 
 		const el = this.audioElements.get(id);
@@ -601,6 +610,7 @@ export class AudioManager extends Events {
 	destroyAll(): void {
 		this.fades.destroy();
 		this.fadeMultipliers.clear();
+		this.regionFadeMultipliers.clear();
 		this.playFades.clear();
 		this.unregistering.clear();
 		this._activeScope.clear();
@@ -625,11 +635,32 @@ export class AudioManager extends Events {
 		this.tracks.clear();
 	}
 
+	private hasRegion(def: AudioTrackDef): boolean {
+		return def.files.length === 1 && (def.startTime !== null || def.endTime !== null);
+	}
+
+	private computeRegionFade(def: AudioTrackDef, currentTime: number): number {
+		let mult = 1;
+		if (def.startTime !== null && def.fadeInDuration > 0) {
+			const elapsed = currentTime - def.startTime;
+			if (elapsed < def.fadeInDuration) {
+				mult = Math.min(mult, Math.max(0, elapsed / def.fadeInDuration));
+			}
+		}
+		if (def.endTime !== null && def.fadeOutDuration > 0) {
+			const remaining = def.endTime - currentTime;
+			if (remaining < def.fadeOutDuration) {
+				mult = Math.min(mult, Math.max(0, remaining / def.fadeOutDuration));
+			}
+		}
+		return mult;
+	}
+
 	private applyVolume(id: string): void {
 		const state = this.tracks.get(id);
 		const gain = this.gainNodes.get(id);
 		if (!state || !gain) return;
-		gain.gain.value = state.volume * this._masterVolume * (this.fadeMultipliers.get(id) ?? 1);
+		gain.gain.value = state.volume * this._masterVolume * (this.fadeMultipliers.get(id) ?? 1) * (this.regionFadeMultipliers.get(id) ?? 1);
 	}
 
 	private setupAudioElement(id: string, el: HTMLAudioElement): void {
@@ -648,6 +679,18 @@ export class AudioManager extends Events {
 					state.currentIndex = (state.currentIndex + 1) % state.def.files.length;
 				}
 				void this.playCurrentIndex(id);
+			} else if (state.def.files.length === 1 && state.def.loop && state.def.startTime !== null) {
+				// Native loop is disabled for region tracks; loop back to startTime manually.
+				const loopTo = state.def.startTime;
+				el.currentTime = loopTo;
+				const mult = this.computeRegionFade(state.def, loopTo);
+				this.regionFadeMultipliers.set(id, mult);
+				this.applyVolume(id);
+				void el.play().catch((e) => {
+					console.error(`RPG Audio: failed to loop region for "${id}"`, e);
+					state.playState = PlayState.Stopped;
+					this.trigger(EVENT_TRACK_CHANGED, id);
+				});
 			} else {
 				state.playState = PlayState.Stopped;
 				state.currentIndex = 0;
@@ -655,6 +698,32 @@ export class AudioManager extends Events {
 				this.trigger(EVENT_TRACK_CHANGED, id);
 				this.cleanupIfOrphaned(id);
 			}
+		});
+
+		el.addEventListener("timeupdate", () => {
+			const state = this.tracks.get(id);
+			if (!state || state.playState !== PlayState.Playing) return;
+			if (!this.hasRegion(state.def)) return;
+
+			const currentTime = el.currentTime;
+
+			if (state.def.endTime !== null && currentTime >= state.def.endTime) {
+				if (state.def.loop) {
+					const loopTo = state.def.startTime ?? 0;
+					el.currentTime = loopTo;
+					const mult = this.computeRegionFade(state.def, loopTo);
+					this.regionFadeMultipliers.set(id, mult);
+					this.applyVolume(id);
+				} else {
+					this.regionFadeMultipliers.delete(id);
+					this.stop(id, {kind: "ended"});
+				}
+				return;
+			}
+
+			const mult = this.computeRegionFade(state.def, currentTime);
+			this.regionFadeMultipliers.set(id, mult);
+			this.applyVolume(id);
 		});
 	}
 
