@@ -330,15 +330,23 @@ export class AudioManager extends Events {
 			this.setupAudioElement(id, el);
 		}
 
-		if (!(state.playState === PlayState.Paused && el.src)) {
+		const wasPaused = state.playState === PlayState.Paused;
+		if (!wasPaused || !el.src) {
 			el.src = resourceUrl;
 			el.loop = state.def.loop && state.def.files.length === 1 && !this.hasRegion(state.def);
-			if (state.def.startTime !== null) {
-				el.currentTime = state.def.startTime;
-			}
 		}
 
-		const wasPaused = state.playState === PlayState.Paused;
+		// Chromium silently ignores currentTime changes before HAVE_METADATA, so
+		// wait for loadedmetadata before seeking to the region start.
+		if (!wasPaused && state.def.startTime !== null) {
+			if (el.readyState < HTMLMediaElement.HAVE_METADATA) {
+				await new Promise<void>((resolve) => {
+					el.addEventListener("loadedmetadata", () => resolve(), {once: true});
+					el.addEventListener("error", () => resolve(), {once: true});
+				});
+			}
+			el.currentTime = state.def.startTime;
+		}
 		try {
 			await el.play();
 			state.playState = PlayState.Playing;
