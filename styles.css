@@ -3,14 +3,21 @@
 /* Inline code block player */
 .rpg-audio-player {
 	display: flex;
-	align-items: center;
-	gap: 8px;
+	flex-direction: column;
+	gap: 4px;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 6px;
 	padding: 4px 8px;
 	margin: 4px 0;
 	background: var(--background-secondary);
 	border-left: 3px solid transparent;
+}
+
+.rpg-audio-player-top {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
 }
 
 .rpg-audio-player.is-playing {
@@ -372,6 +379,114 @@
 	text-align: center;
 	padding: 24px 12px;
 	font-style: italic;
+}
+
+/* Info badges on inline player */
+.rpg-audio-info {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	font-size: 0.7em;
+	color: var(--text-muted);
+	padding: 0 2px;
+}
+
+.rpg-audio-info:empty {
+	display: none;
+}
+
+.rpg-audio-info-badge {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.rpg-audio-info-badge svg {
+	width: 10px;
+	height: 10px;
+}
+
+/* Seek bar */
+.rpg-audio-seek-container {
+	--region-start: 0%;
+	--region-end: 100%;
+	--seek-progress: 0%;
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	padding: 2px 0;
+}
+
+.is-stopped > .rpg-audio-seek-container {
+	display: none;
+}
+
+.rpg-audio-seek {
+	flex: 1;
+	height: 4px;
+	-webkit-appearance: none;
+	appearance: none;
+	outline: none;
+	border-radius: 2px;
+	touch-action: pan-x;
+	background: linear-gradient(to right,
+		var(--background-modifier-border) 0%,
+		var(--background-modifier-border) var(--region-start),
+		var(--interactive-accent) var(--region-start),
+		var(--interactive-accent) var(--seek-progress),
+		var(--interactive-normal) var(--seek-progress),
+		var(--interactive-normal) var(--region-end),
+		var(--background-modifier-border) var(--region-end),
+		var(--background-modifier-border) 100%
+	);
+}
+
+.rpg-audio-seek::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--interactive-accent);
+	cursor: pointer;
+	position: relative;
+	z-index: 2;
+}
+
+.rpg-audio-time {
+	font-size: 0.7em;
+	color: var(--text-muted);
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+/* Region handles */
+.rpg-audio-region-handle {
+	position: absolute;
+	width: 2px;
+	height: 14px;
+	background: var(--interactive-accent);
+	border-radius: 1px;
+	cursor: ew-resize;
+	z-index: 3;
+	top: 50%;
+	transform: translateY(-50%) translateX(-50%);
+	touch-action: none;
+}
+
+.rpg-audio-region-handle::before {
+	content: "";
+	position: absolute;
+	top: -4px;
+	left: -4px;
+	right: -4px;
+	bottom: -4px;
+}
+
+.rpg-audio-region-handle.is-hidden {
+	display: none;
 }
 
 /* Insert track modal */

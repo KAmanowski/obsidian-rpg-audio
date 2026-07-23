@@ -9,11 +9,12 @@ import {
 	EVENT_MASTER_VOLUME,
 	EVENT_ALLOW_AUTOPLAY,
 	EVENT_ACTIVE_SCOPE_CHANGED,
+	EVENT_TIME_UPDATE,
 	AudioTrackState,
 	TrackCause,
 	MIN_FADE_DURATION_MS,
 } from "../types";
-import {createPlayerControls, updatePlayPauseButton, PlayerControlsElements} from "./player-controls";
+import {createPlayerControls, updatePlayPauseButton, PlayerControlsElements, createSeekBar, updateSeekBar, SeekBarElements} from "./player-controls";
 import {formatTimestamp} from "./code-block-player";
 
 function formatCause(cause: TrackCause): string {
@@ -25,7 +26,7 @@ function formatCause(cause: TrackCause): string {
 export class RpgAudioSidebarView extends ItemView {
 	private plugin: RpgAudioPlugin;
 	private manager: AudioManager;
-	private trackRows: Map<string, {rowEl: HTMLElement; controls: PlayerControlsElements; statusEl: HTMLElement; debugEl: HTMLElement; scopeEl: HTMLElement}> = new Map();
+	private trackRows: Map<string, {rowEl: HTMLElement; controls: PlayerControlsElements; statusEl: HTMLElement; debugEl: HTMLElement; scopeEl: HTMLElement; seekBar: SeekBarElements}> = new Map();
 	private contentArea: HTMLElement | null = null;
 	private masterSlider: HTMLInputElement | null = null;
 	private autoplayBtn: HTMLElement | null = null;
@@ -83,6 +84,14 @@ export class RpgAudioSidebarView extends ItemView {
 		);
 		this.registerEvent(
 			this.manager.on(EVENT_ACTIVE_SCOPE_CHANGED, () => this.updateActiveScope())
+		);
+		this.registerEvent(
+			this.manager.on(EVENT_TIME_UPDATE, (id: string, currentTime: number, duration: number) => {
+				const row = this.trackRows.get(id);
+				if (!row) return;
+				const region = this.manager.getEffectiveRegion(id);
+				updateSeekBar(row.seekBar, currentTime, duration, region);
+			})
 		);
 	}
 
@@ -299,11 +308,16 @@ export class RpgAudioSidebarView extends ItemView {
 		const statusEl = row.createDiv({cls: "rpg-audio-status"});
 		this.setStatusText(statusEl, track);
 
+		const seekBar = createSeekBar(row, {
+			onSeek: (time) => this.manager.seek(track.def.id, time),
+			onRegionChange: (start, end) => this.manager.setEffectiveRegion(track.def.id, start, end),
+		});
+
 		const scopeEl = row.createDiv({cls: "rpg-audio-sidebar-track-scope"});
 		const debugEl = row.createDiv({cls: "rpg-audio-sidebar-track-debug"});
 		this.updateDebugEls(scopeEl, debugEl, track);
 
-		this.trackRows.set(track.def.id, {rowEl: row, controls, statusEl, debugEl, scopeEl});
+		this.trackRows.set(track.def.id, {rowEl: row, controls, statusEl, debugEl, scopeEl, seekBar});
 	}
 
 	private updateTrackRow(id: string): void {
@@ -315,6 +329,12 @@ export class RpgAudioSidebarView extends ItemView {
 		updatePlayPauseButton(row.controls.playPauseBtn, state.playState);
 		row.controls.volumeSlider.value = String(state.volume);
 		this.setStatusText(row.statusEl, state);
+
+		const currentTime = this.manager.getCurrentTime(id);
+		const duration = this.manager.getDuration(id);
+		const region = this.manager.getEffectiveRegion(id);
+		updateSeekBar(row.seekBar, currentTime, duration, region);
+
 		this.updateDebugEls(row.scopeEl, row.debugEl, state);
 	}
 

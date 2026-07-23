@@ -1,7 +1,7 @@
 import {MarkdownRenderChild, setIcon} from "obsidian";
 import {AudioManager} from "../audio-manager";
-import {AudioTrackDef, PlayState, EVENT_TRACK_CHANGED, DETACH_POLL_INTERVAL_MS} from "../types";
-import {createPlayerControls, updatePlayPauseButton, PlayerControlsElements} from "./player-controls";
+import {AudioTrackDef, PlayState, EVENT_TRACK_CHANGED, EVENT_TIME_UPDATE, DETACH_POLL_INTERVAL_MS} from "../types";
+import {createPlayerControls, updatePlayPauseButton, PlayerControlsElements, createSeekBar, updateSeekBar, SeekBarElements} from "./player-controls";
 
 function parseTimestamp(str: string): number | null {
 	const parts = str.split(":").map(p => p.trim());
@@ -150,7 +150,9 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 	private def: AudioTrackDef;
 	private controls: PlayerControlsElements | null = null;
 	private statusEl: HTMLElement | null = null;
+	private seekBarElements: SeekBarElements | null = null;
 	private eventRef: (() => void) | null = null;
+	private timeUpdateRef: (() => void) | null = null;
 	private autoplayTimer: number | null = null;
 
 	constructor(containerEl: HTMLElement, manager: AudioManager, def: AudioTrackDef) {
@@ -169,6 +171,14 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 		};
 		this.manager.on(EVENT_TRACK_CHANGED, handler);
 		this.eventRef = () => this.manager.off(EVENT_TRACK_CHANGED, handler);
+
+		const timeHandler = (changedId: string, currentTime: number, duration: number) => {
+			if (changedId !== this.def.id || !this.seekBarElements) return;
+			const region = this.manager.getEffectiveRegion(this.def.id);
+			updateSeekBar(this.seekBarElements, currentTime, duration, region);
+		};
+		this.manager.on(EVENT_TIME_UPDATE, timeHandler);
+		this.timeUpdateRef = () => this.manager.off(EVENT_TIME_UPDATE, timeHandler);
 
 		this.syncState();
 
@@ -200,6 +210,10 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 			this.eventRef();
 			this.eventRef = null;
 		}
+		if (this.timeUpdateRef) {
+			this.timeUpdateRef();
+			this.timeUpdateRef = null;
+		}
 		this.manager.scheduleOrphanCheck(this.def.id);
 	}
 
@@ -209,23 +223,64 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 		el.addClass("rpg-audio-player");
 		el.dataset.trackId = this.def.id;
 
-		const header = el.createDiv({cls: "rpg-audio-header"});
+		const topRow = el.createDiv({cls: "rpg-audio-player-top"});
+
+		const header = topRow.createDiv({cls: "rpg-audio-header"});
 		const iconEl = header.createSpan({cls: "rpg-audio-icon"});
 		setIcon(iconEl, this.getTypeIcon());
 		header.createSpan({cls: "rpg-audio-name", text: this.def.name});
 		header.createSpan({cls: "rpg-audio-badge", text: this.def.type});
 
-		this.statusEl = el.createSpan({cls: "rpg-audio-status-inline"});
+		this.statusEl = topRow.createSpan({cls: "rpg-audio-status-inline"});
 
 		const currentState = this.manager.getTrack(this.def.id);
 		const initialVolume = currentState ? currentState.volume : 1.0;
 
-		this.controls = createPlayerControls(el, {
+		this.controls = createPlayerControls(topRow, {
 			onPlay: () => { this.ensureActive(); void this.manager.play(this.def.id); },
 			onPause: () => { this.ensureActive(); this.manager.pause(this.def.id); },
 			onStop: () => { this.ensureActive(); this.manager.stop(this.def.id); },
 			onVolumeChange: (v) => { this.ensureActive(); this.manager.setTrackVolume(this.def.id, v); },
 		}, initialVolume);
+
+		this.buildInfoBadges(el);
+
+		this.seekBarElements = createSeekBar(el, {
+			onSeek: (time) => { this.ensureActive(); this.manager.seek(this.def.id, time); },
+			onRegionChange: (start, end) => { this.ensureActive(); this.manager.setEffectiveRegion(this.def.id, start, end); },
+		});
+	}
+
+	private buildInfoBadges(parent: HTMLElement): void {
+		const badges: {icon: string; text: string}[] = [];
+
+		if (this.def.loop) {
+			badges.push({icon: "repeat", text: "Loop"});
+		}
+
+		if (this.def.startTime !== null || this.def.endTime !== null) {
+			const startLabel = this.def.startTime !== null ? formatTimestamp(this.def.startTime) : "0:00";
+			const endLabel = this.def.endTime !== null ? formatTimestamp(this.def.endTime) : "end";
+			badges.push({icon: "clock", text: `${startLabel} – ${endLabel}`});
+		}
+
+		if (this.def.fadeInDuration > 0 || this.def.fadeOutDuration > 0) {
+			let fadeText = "";
+			if (this.def.fadeInDuration > 0) fadeText += `↑${this.def.fadeInDuration}s`;
+			if (this.def.fadeInDuration > 0 && this.def.fadeOutDuration > 0) fadeText += " ";
+			if (this.def.fadeOutDuration > 0) fadeText += `↓${this.def.fadeOutDuration}s`;
+			badges.push({icon: "volume-1", text: fadeText});
+		}
+
+		if (badges.length === 0) return;
+
+		const infoRow = parent.createDiv({cls: "rpg-audio-info"});
+		for (const badge of badges) {
+			const badgeEl = infoRow.createSpan({cls: "rpg-audio-info-badge"});
+			const badgeIcon = badgeEl.createSpan();
+			setIcon(badgeIcon, badge.icon);
+			badgeEl.createSpan({text: badge.text});
+		}
 	}
 
 	/** Re-register track and event listener if orphaned (e.g. in embedded notes). */
@@ -239,6 +294,15 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 			};
 			this.manager.on(EVENT_TRACK_CHANGED, handler);
 			this.eventRef = () => this.manager.off(EVENT_TRACK_CHANGED, handler);
+		}
+		if (!this.timeUpdateRef) {
+			const timeHandler = (changedId: string, currentTime: number, duration: number) => {
+				if (changedId !== this.def.id || !this.seekBarElements) return;
+				const region = this.manager.getEffectiveRegion(this.def.id);
+				updateSeekBar(this.seekBarElements, currentTime, duration, region);
+			};
+			this.manager.on(EVENT_TIME_UPDATE, timeHandler);
+			this.timeUpdateRef = () => this.manager.off(EVENT_TIME_UPDATE, timeHandler);
 		}
 	}
 
@@ -264,6 +328,13 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 			}
 		}
 		this.statusEl.setText(statusText);
+
+		if (this.seekBarElements) {
+			const currentTime = this.manager.getCurrentTime(this.def.id);
+			const duration = this.manager.getDuration(this.def.id);
+			const region = this.manager.getEffectiveRegion(this.def.id);
+			updateSeekBar(this.seekBarElements, currentTime, duration, region);
+		}
 	}
 
 	private getTypeIcon(): string {

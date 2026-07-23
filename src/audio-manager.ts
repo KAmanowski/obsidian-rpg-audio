@@ -11,6 +11,7 @@ import {
 	EVENT_MASTER_VOLUME,
 	EVENT_ALLOW_AUTOPLAY,
 	EVENT_ACTIVE_SCOPE_CHANGED,
+	EVENT_TIME_UPDATE,
 	ORPHAN_CHECK_DELAY_MS,
 } from "./types";
 import { FadeEngine } from "./fade-engine";
@@ -58,6 +59,8 @@ export class AudioManager extends Events {
 	private playFades: Map<string, "out" | "in"> = new Map();
 	private _activeScope: Set<string> = new Set();
 	private regionFadeMultipliers: Map<string, number> = new Map();
+	private regionFadeInDone: Set<string> = new Set();
+	private regionOverrides: Map<string, {startTime: number | null; endTime: number | null}> = new Map();
 
 	constructor(app: App) {
 		super();
@@ -145,6 +148,51 @@ export class AudioManager extends Events {
 		return Array.from(this._activeScope);
 	}
 
+	getCurrentTime(id: string): number {
+		const el = this.audioElements.get(id);
+		return el ? el.currentTime : 0;
+	}
+
+	getDuration(id: string): number {
+		const el = this.audioElements.get(id);
+		return el && isFinite(el.duration) ? el.duration : 0;
+	}
+
+	seek(id: string, time: number): void {
+		const el = this.audioElements.get(id);
+		const state = this.tracks.get(id);
+		if (!el || !state) return;
+		const region = this.getEffectiveRegion(id);
+		const lo = region.startTime ?? 0;
+		const hi = region.endTime ?? (isFinite(el.duration) ? el.duration : Infinity);
+		el.currentTime = Math.max(lo, Math.min(hi, time));
+	}
+
+	getEffectiveRegion(id: string): {startTime: number | null; endTime: number | null} {
+		const override = this.regionOverrides.get(id);
+		if (override) return override;
+		const state = this.tracks.get(id);
+		if (!state) return {startTime: null, endTime: null};
+		return {startTime: state.def.startTime, endTime: state.def.endTime};
+	}
+
+	setEffectiveRegion(id: string, startTime: number | null, endTime: number | null): void {
+		this.regionOverrides.set(id, {startTime, endTime});
+		const el = this.audioElements.get(id);
+		const state = this.tracks.get(id);
+		if (el && state && state.playState === PlayState.Playing) {
+			const lo = startTime ?? 0;
+			const hi = endTime ?? (isFinite(el.duration) ? el.duration : Infinity);
+			if (el.currentTime < lo) el.currentTime = lo;
+			if (el.currentTime > hi) el.currentTime = hi;
+		}
+		this.trigger(EVENT_TRACK_CHANGED, id);
+	}
+
+	clearRegionOverride(id: string): void {
+		this.regionOverrides.delete(id);
+	}
+
 	private isScopeSubset(child: string[], parent: Set<string>): boolean {
 		for (const s of child) {
 			if (!parent.has(s)) return false;
@@ -220,6 +268,8 @@ export class AudioManager extends Events {
 			this.fades.cancel(id);
 			this.fadeMultipliers.delete(id);
 			this.regionFadeMultipliers.delete(id);
+			this.regionFadeInDone.delete(id);
+			this.regionOverrides.delete(id);
 			this.playFades.delete(id);
 			this.stop(id);
 			const el = this.audioElements.get(id);
@@ -338,22 +388,23 @@ export class AudioManager extends Events {
 
 		// Chromium silently ignores currentTime changes before HAVE_METADATA, so
 		// wait for loadedmetadata before seeking to the region start.
-		if (!wasPaused && state.def.startTime !== null) {
+		const region = this.getEffectiveRegion(id);
+		if (!wasPaused && region.startTime !== null) {
 			if (el.readyState < HTMLMediaElement.HAVE_METADATA) {
 				await new Promise<void>((resolve) => {
 					el.addEventListener("loadedmetadata", () => resolve(), {once: true});
 					el.addEventListener("error", () => resolve(), {once: true});
 				});
 			}
-			el.currentTime = state.def.startTime;
+			el.currentTime = region.startTime;
 		}
 		try {
 			await el.play();
 			state.playState = PlayState.Playing;
 			state.error = null;
 			state.lastCause = buildCause(wasPaused ? "resume" : "play", cause);
-			if (this.hasRegion(state.def)) {
-				this.regionFadeMultipliers.set(id, this.computeRegionFade(state.def, el.currentTime));
+			if (this.hasRegion(state.def) || this.regionOverrides.has(id)) {
+				this.regionFadeMultipliers.set(id, this.computeRegionFade(id, state.def, el.currentTime));
 			}
 			if (useCrossfadeIn) {
 				this.fadeIn(id, this._crossfadeDuration);
@@ -465,6 +516,8 @@ export class AudioManager extends Events {
 		this.fades.cancel(id);
 		this.fadeMultipliers.delete(id);
 		this.regionFadeMultipliers.delete(id);
+		this.regionFadeInDone.delete(id);
+		this.regionOverrides.delete(id);
 		this.playFades.delete(id);
 
 		const el = this.audioElements.get(id);
@@ -619,6 +672,8 @@ export class AudioManager extends Events {
 		this.fades.destroy();
 		this.fadeMultipliers.clear();
 		this.regionFadeMultipliers.clear();
+		this.regionFadeInDone.clear();
+		this.regionOverrides.clear();
 		this.playFades.clear();
 		this.unregistering.clear();
 		this._activeScope.clear();
@@ -647,16 +702,27 @@ export class AudioManager extends Events {
 		return def.files.length === 1 && (def.startTime !== null || def.endTime !== null);
 	}
 
-	private computeRegionFade(def: AudioTrackDef, currentTime: number): number {
+	private computeRegionFade(id: string, def: AudioTrackDef, currentTime: number): number {
+		const region = this.getEffectiveRegion(id);
+		const startTime = region.startTime;
+		const endTime = region.endTime;
 		let mult = 1;
-		if (def.startTime !== null && def.fadeInDuration > 0) {
-			const elapsed = currentTime - def.startTime;
-			if (elapsed < def.fadeInDuration) {
-				mult = Math.min(mult, Math.max(0, elapsed / def.fadeInDuration));
+
+		if (startTime !== null && def.fadeInDuration > 0) {
+			if (this.regionFadeInDone.has(id)) {
+				// Fade-in already completed; keep multiplier at 1
+			} else {
+				const elapsed = currentTime - startTime;
+				if (elapsed < def.fadeInDuration) {
+					mult = Math.min(mult, Math.max(0, elapsed / def.fadeInDuration));
+				} else {
+					this.regionFadeInDone.add(id);
+				}
 			}
 		}
-		if (def.endTime !== null && def.fadeOutDuration > 0) {
-			const remaining = def.endTime - currentTime;
+
+		if (endTime !== null && def.fadeOutDuration > 0 && !def.loop) {
+			const remaining = endTime - currentTime;
 			if (remaining < def.fadeOutDuration) {
 				mult = Math.min(mult, Math.max(0, remaining / def.fadeOutDuration));
 			}
@@ -687,11 +753,11 @@ export class AudioManager extends Events {
 					state.currentIndex = (state.currentIndex + 1) % state.def.files.length;
 				}
 				void this.playCurrentIndex(id);
-			} else if (state.def.files.length === 1 && state.def.loop && state.def.startTime !== null) {
-				// Native loop is disabled for region tracks; loop back to startTime manually.
-				const loopTo = state.def.startTime;
+			} else if (state.def.files.length === 1 && state.def.loop && (this.hasRegion(state.def) || this.regionOverrides.has(id))) {
+				const region = this.getEffectiveRegion(id);
+				const loopTo = region.startTime ?? 0;
 				el.currentTime = loopTo;
-				const mult = this.computeRegionFade(state.def, loopTo);
+				const mult = this.computeRegionFade(id, state.def, loopTo);
 				this.regionFadeMultipliers.set(id, mult);
 				this.applyVolume(id);
 				void el.play().catch((e) => {
@@ -711,15 +777,19 @@ export class AudioManager extends Events {
 		el.addEventListener("timeupdate", () => {
 			const state = this.tracks.get(id);
 			if (!state || state.playState !== PlayState.Playing) return;
-			if (!this.hasRegion(state.def)) return;
 
 			const currentTime = el.currentTime;
+			const duration = isFinite(el.duration) ? el.duration : 0;
+			this.trigger(EVENT_TIME_UPDATE, id, currentTime, duration);
 
-			if (state.def.endTime !== null && currentTime >= state.def.endTime) {
+			if (!this.hasRegion(state.def) && !this.regionOverrides.has(id)) return;
+
+			const region = this.getEffectiveRegion(id);
+			if (region.endTime !== null && currentTime >= region.endTime) {
 				if (state.def.loop) {
-					const loopTo = state.def.startTime ?? 0;
+					const loopTo = region.startTime ?? 0;
 					el.currentTime = loopTo;
-					const mult = this.computeRegionFade(state.def, loopTo);
+					const mult = this.computeRegionFade(id, state.def, loopTo);
 					this.regionFadeMultipliers.set(id, mult);
 					this.applyVolume(id);
 				} else {
@@ -729,7 +799,7 @@ export class AudioManager extends Events {
 				return;
 			}
 
-			const mult = this.computeRegionFade(state.def, currentTime);
+			const mult = this.computeRegionFade(id, state.def, currentTime);
 			this.regionFadeMultipliers.set(id, mult);
 			this.applyVolume(id);
 		});
