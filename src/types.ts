@@ -16,6 +16,10 @@ export interface AudioTrackDef {
 	resumes: string[];
 	pauses: string[];
 	scope: string[];
+	startTime: number | null;
+	endTime: number | null;
+	fadeInDuration: number;
+	fadeOutDuration: number;
 }
 
 export type TrackAction = "play" | "pause" | "stop" | "resume";

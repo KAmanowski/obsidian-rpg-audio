@@ -3,6 +3,34 @@ import {AudioManager} from "../audio-manager";
 import {AudioTrackDef, PlayState, EVENT_TRACK_CHANGED, DETACH_POLL_INTERVAL_MS} from "../types";
 import {createPlayerControls, updatePlayPauseButton, PlayerControlsElements} from "./player-controls";
 
+function parseTimestamp(str: string): number | null {
+	const parts = str.split(":").map(p => p.trim());
+	if (parts.length === 1) {
+		const s = parseFloat(parts[0] ?? "");
+		return isNaN(s) ? null : s;
+	}
+	if (parts.length === 2) {
+		const m = parseInt(parts[0] ?? "");
+		const s = parseFloat(parts[1] ?? "");
+		if (isNaN(m) || isNaN(s)) return null;
+		return m * 60 + s;
+	}
+	if (parts.length === 3) {
+		const h = parseInt(parts[0] ?? "");
+		const m = parseInt(parts[1] ?? "");
+		const s = parseFloat(parts[2] ?? "");
+		if (isNaN(h) || isNaN(m) || isNaN(s)) return null;
+		return h * 3600 + m * 60 + s;
+	}
+	return null;
+}
+
+export function formatTimestamp(secs: number): string {
+	const m = Math.floor(secs / 60);
+	const s = Math.floor(secs % 60).toString().padStart(2, "0");
+	return `${m}:${s}`;
+}
+
 export function parseAudioBlock(source: string): AudioTrackDef | null {
 	const lines = source.split("\n").map(l => l.trim()).filter(l => l.length > 0);
 
@@ -16,6 +44,10 @@ export function parseAudioBlock(source: string): AudioTrackDef | null {
 	let resumes: string[] = [];
 	let pauses: string[] = [];
 	let scope: string[] = [];
+	let startTime: number | null = null;
+	let endTime: number | null = null;
+	let fadeInDuration = 0;
+	let fadeOutDuration = 0;
 	const files: string[] = [];
 	let inFilesList = false;
 
@@ -81,6 +113,22 @@ export function parseAudioBlock(source: string): AudioTrackDef | null {
 					scope = Array.from(new Set(raw));
 				}
 				break;
+			case "start":
+				startTime = parseTimestamp(value);
+				break;
+			case "end":
+				endTime = parseTimestamp(value);
+				break;
+			case "fadein": {
+				const fi = parseFloat(value);
+				if (!isNaN(fi)) fadeInDuration = fi;
+				break;
+			}
+			case "fadeout": {
+				const fo = parseFloat(value);
+				if (!isNaN(fo)) fadeOutDuration = fo;
+				break;
+			}
 			case "file":
 				files.push(value);
 				break;
@@ -94,7 +142,7 @@ export function parseAudioBlock(source: string): AudioTrackDef | null {
 
 	if (!type) type = files.length > 1 ? "playlist" : "sfx";
 
-	return {id, name, type, files, loop, random, autoplay, stops, resumes, pauses, scope};
+	return {id, name, type, files, loop, random, autoplay, stops, resumes, pauses, scope, startTime, endTime, fadeInDuration, fadeOutDuration};
 }
 
 export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
