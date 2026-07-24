@@ -10,6 +10,7 @@ export interface TransportCallbacks {
 }
 
 export interface TransportElements {
+	container: HTMLElement;
 	playPauseBtn: HTMLButtonElement;
 	stopBtn: HTMLButtonElement;
 }
@@ -18,13 +19,15 @@ export function createTransportButtons(
 	parent: HTMLElement,
 	callbacks: TransportCallbacks,
 ): TransportElements {
-	const playPauseBtn = parent.createEl("button", {
+	const container = parent.createDiv({cls: "rpg-audio-transport"});
+
+	const playPauseBtn = container.createEl("button", {
 		cls: "rpg-audio-btn rpg-audio-play-btn clickable-icon",
 	});
 	setIcon(playPauseBtn, "play");
 	playPauseBtn.setAttribute("aria-label", "Play");
 
-	const stopBtn = parent.createEl("button", {
+	const stopBtn = container.createEl("button", {
 		cls: "rpg-audio-btn rpg-audio-stop-btn clickable-icon",
 	});
 	setIcon(stopBtn, "square");
@@ -39,7 +42,7 @@ export function createTransportButtons(
 	});
 	stopBtn.addEventListener("click", () => callbacks.onStop());
 
-	return {playPauseBtn, stopBtn};
+	return {container, playPauseBtn, stopBtn};
 }
 
 export function updatePlayPauseButton(btn: HTMLButtonElement, state: PlayState): void {

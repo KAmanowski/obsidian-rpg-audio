@@ -27,12 +27,29 @@
 	opacity: 0.55;
 }
 
-/* Top row: [play][stop] name badge [loop][fade] [vol] */
+/* Top row: [transport] [header] [controls] */
 .rpg-audio-player-top {
 	display: flex;
 	align-items: center;
 	gap: 6px;
 	width: 100%;
+}
+
+/* Transport buttons wrapper (play + stop side by side) */
+.rpg-audio-transport {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-shrink: 0;
+}
+
+/* Header (name + badge) — takes remaining space */
+.rpg-audio-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: 1;
+	min-width: 0;
 }
 
 .rpg-audio-name {
@@ -41,8 +58,15 @@
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
-	flex: 1;
-	min-width: 0;
+}
+
+/* Right-aligned controls (settings + volume) */
+.rpg-audio-controls {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-shrink: 0;
+	margin-left: auto;
 }
 
 /* ── Type badge ───────────────────────────────────────────────────────────── */
@@ -117,9 +141,9 @@
 	color: #888a90;
 }
 
-/* Hide stop button and volume when stopped (inline player) */
+/* Hide controls + seek when stopped (inline player) */
 .rpg-audio-player.is-stopped .rpg-audio-stop-btn,
-.rpg-audio-player.is-stopped .rpg-audio-vol-wrapper,
+.rpg-audio-player.is-stopped .rpg-audio-controls,
 .rpg-audio-player.is-stopped .rpg-audio-seek-wrapper {
 	display: none;
 }
@@ -219,12 +243,6 @@
 	flex-direction: column;
 	gap: 3px;
 	width: 100%;
-}
-
-/* Hide seek wrapper when stopped */
-.rpg-audio-player.is-stopped .rpg-audio-seek-wrapper,
-.rpg-audio-sidebar-track.is-stopped .rpg-audio-seek-wrapper {
-	display: none;
 }
 
 .rpg-audio-seek-container {
@@ -330,10 +348,16 @@
 .rpg-audio-time-row {
 	display: flex;
 	justify-content: space-between;
+	align-items: center;
+	width: 100%;
 	font-size: 10px;
 	color: #555860;
 	font-variant-numeric: tabular-nums;
 	line-height: 1;
+}
+
+.rpg-audio-time-center:empty {
+	display: none;
 }
 
 .rpg-audio-time-center {
@@ -614,7 +638,8 @@
 }
 
 .rpg-audio-sidebar-track.is-stopped .rpg-audio-sidebar-track-row2,
-.rpg-audio-sidebar-track.is-stopped .rpg-audio-stop-btn {
+.rpg-audio-sidebar-track.is-stopped .rpg-audio-stop-btn,
+.rpg-audio-sidebar-track.is-stopped .rpg-audio-seek-wrapper {
 	display: none;
 }
 
