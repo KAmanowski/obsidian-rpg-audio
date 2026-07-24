@@ -9,11 +9,22 @@ import {
 	EVENT_MASTER_VOLUME,
 	EVENT_ALLOW_AUTOPLAY,
 	EVENT_ACTIVE_SCOPE_CHANGED,
+	EVENT_TIME_UPDATE,
 	AudioTrackState,
 	TrackCause,
 	MIN_FADE_DURATION_MS,
 } from "../types";
-import {createPlayerControls, updatePlayPauseButton, PlayerControlsElements} from "./player-controls";
+import {
+	createTransportButtons,
+	createVolumeControl,
+	createSettingsButtons,
+	createSeekBar,
+	updatePlayPauseButton,
+	updateSettingsButtons,
+	updateSeekBar,
+	SettingsButtonsElements,
+	SeekBarElements,
+} from "./player-controls";
 import {formatTimestamp} from "./code-block-player";
 
 function formatCause(cause: TrackCause): string {
@@ -22,10 +33,60 @@ function formatCause(cause: TrackCause): string {
 	return `${cause.action}${kindLabel}${detail}`;
 }
 
+interface TypeColorSet {
+	bg: string;
+	border: string;
+	text: string;
+	dim: string;
+}
+
+const TYPE_COLOR_MAP: Record<string, TypeColorSet> = {
+	music: {
+		bg: "rgba(124,92,191,0.06)",
+		border: "rgba(124,92,191,0.4)",
+		text: "#b8a0e0",
+		dim: "rgba(124,92,191,0.6)",
+	},
+	ambience: {
+		bg: "rgba(56,189,176,0.06)",
+		border: "rgba(56,189,176,0.4)",
+		text: "#5ecec7",
+		dim: "rgba(56,189,176,0.6)",
+	},
+	sfx: {
+		bg: "rgba(232,168,84,0.06)",
+		border: "rgba(232,168,84,0.4)",
+		text: "#e8a854",
+		dim: "rgba(232,168,84,0.6)",
+	},
+};
+
+const DEFAULT_COLORS: TypeColorSet = {
+	bg: "rgba(124,92,191,0.06)",
+	border: "rgba(124,92,191,0.4)",
+	text: "#b8a0e0",
+	dim: "rgba(124,92,191,0.6)",
+};
+
+function getTypeColors(type: string): TypeColorSet {
+	return TYPE_COLOR_MAP[type.toLowerCase()] ?? DEFAULT_COLORS;
+}
+
+interface TrackRowData {
+	rowEl: HTMLElement;
+	playPauseBtn: HTMLButtonElement;
+	volumeSlider: HTMLInputElement;
+	statusEl: HTMLElement;
+	debugEl: HTMLElement;
+	scopeEl: HTMLElement;
+	seekBar: SeekBarElements;
+	settings?: SettingsButtonsElements;
+}
+
 export class RpgAudioSidebarView extends ItemView {
 	private plugin: RpgAudioPlugin;
 	private manager: AudioManager;
-	private trackRows: Map<string, {rowEl: HTMLElement; controls: PlayerControlsElements; statusEl: HTMLElement; debugEl: HTMLElement; scopeEl: HTMLElement}> = new Map();
+	private trackRows: Map<string, TrackRowData> = new Map();
 	private contentArea: HTMLElement | null = null;
 	private masterSlider: HTMLInputElement | null = null;
 	private autoplayBtn: HTMLElement | null = null;
@@ -83,6 +144,14 @@ export class RpgAudioSidebarView extends ItemView {
 		);
 		this.registerEvent(
 			this.manager.on(EVENT_ACTIVE_SCOPE_CHANGED, () => this.updateActiveScope())
+		);
+		this.registerEvent(
+			this.manager.on(EVENT_TIME_UPDATE, (id: string, currentTime: number, duration: number) => {
+				const row = this.trackRows.get(id);
+				if (!row) return;
+				const region = this.manager.getEffectiveRegion(id);
+				updateSeekBar(row.seekBar, currentTime, duration, region, PlayState.Playing);
+			})
 		);
 	}
 
@@ -235,6 +304,13 @@ export class RpgAudioSidebarView extends ItemView {
 			const section = this.contentArea.createDiv({cls: "rpg-audio-sidebar-section"});
 			const isCollapsed = this.collapsedGroups.has(type);
 
+			// Apply type-specific colour tokens to the section
+			const colors = getTypeColors(type);
+			section.style.setProperty("--type-bg", colors.bg);
+			section.style.setProperty("--type-border", colors.border);
+			section.style.setProperty("--type-text", colors.text);
+			section.style.setProperty("--type-dim", colors.dim);
+
 			const sectionHeader = section.createDiv({
 				cls: "rpg-audio-sidebar-section-header" + (isCollapsed ? " is-collapsed" : ""),
 			});
@@ -284,26 +360,57 @@ export class RpgAudioSidebarView extends ItemView {
 	private buildTrackRow(parent: HTMLElement, track: AudioTrackState): void {
 		const row = parent.createDiv({cls: "rpg-audio-sidebar-track"});
 		this.applyPlayStateClass(row, track.playState);
-		const topRow = row.createDiv({cls: "rpg-audio-sidebar-track-top"});
-		topRow.createDiv({cls: "rpg-audio-sidebar-track-name", text: track.def.name});
 
-		const controls = createPlayerControls(topRow, {
+		// Row 1: transport buttons + name + badge
+		const row1 = row.createDiv({cls: "rpg-audio-sidebar-track-top"});
+
+		const transport = createTransportButtons(row1, {
 			onPlay: () => void this.manager.play(track.def.id),
 			onPause: () => this.manager.pause(track.def.id),
 			onStop: () => this.manager.stop(track.def.id),
-			onVolumeChange: (v) => this.manager.setTrackVolume(track.def.id, v),
+		});
+		updatePlayPauseButton(transport.playPauseBtn, track.playState);
+
+		const nameEl = row1.createDiv({cls: "rpg-audio-sidebar-track-name", text: track.def.name});
+		nameEl.setAttribute("title", track.def.name);
+
+		const badge = row1.createSpan({cls: "rpg-audio-badge"});
+		badge.setText(track.def.type.toUpperCase());
+		badge.dataset.type = track.def.type.toLowerCase();
+
+		// Settings + volume on the same row (hidden in stopped state via CSS)
+		const settings = createSettingsButtons(row1, track.def, (newLoop) => {
+			this.manager.setLoopOverride(track.def.id, newLoop);
+		});
+
+		const volumeSlider = createVolumeControl(row1, (v) => {
+			this.manager.setTrackVolume(track.def.id, v);
 		}, track.volume);
 
-		updatePlayPauseButton(controls.playPauseBtn, track.playState);
-
+		// Status (errors + playlist index)
 		const statusEl = row.createDiv({cls: "rpg-audio-status"});
 		this.setStatusText(statusEl, track);
+
+		// Seek bar (hidden in stopped state via CSS)
+		const seekBar = createSeekBar(row, {
+			onSeek: (time) => this.manager.seek(track.def.id, time),
+			onRegionChange: (start, end) => this.manager.setEffectiveRegion(track.def.id, start, end),
+		});
 
 		const scopeEl = row.createDiv({cls: "rpg-audio-sidebar-track-scope"});
 		const debugEl = row.createDiv({cls: "rpg-audio-sidebar-track-debug"});
 		this.updateDebugEls(scopeEl, debugEl, track);
 
-		this.trackRows.set(track.def.id, {rowEl: row, controls, statusEl, debugEl, scopeEl});
+		this.trackRows.set(track.def.id, {
+			rowEl: row,
+			playPauseBtn: transport.playPauseBtn,
+			volumeSlider,
+			statusEl,
+			debugEl,
+			scopeEl,
+			seekBar,
+			settings,
+		});
 	}
 
 	private updateTrackRow(id: string): void {
@@ -312,9 +419,19 @@ export class RpgAudioSidebarView extends ItemView {
 		if (!row || !state) return;
 
 		this.applyPlayStateClass(row.rowEl, state.playState);
-		updatePlayPauseButton(row.controls.playPauseBtn, state.playState);
-		row.controls.volumeSlider.value = String(state.volume);
+		updatePlayPauseButton(row.playPauseBtn, state.playState);
+		row.volumeSlider.value = String(state.volume);
 		this.setStatusText(row.statusEl, state);
+
+		if (row.settings) {
+			updateSettingsButtons(row.settings, this.manager.getEffectiveLoop(id));
+		}
+
+		const currentTime = this.manager.getCurrentTime(id);
+		const duration = this.manager.getDuration(id);
+		const region = this.manager.getEffectiveRegion(id);
+		updateSeekBar(row.seekBar, currentTime, duration, region, state.playState);
+
 		this.updateDebugEls(row.scopeEl, row.debugEl, state);
 	}
 

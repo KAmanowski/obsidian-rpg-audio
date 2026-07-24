@@ -2,13 +2,13 @@
 
 Turn your session prep notes into a soundboard — ambience, music, and sound effects, all controlled from within Obsidian.
 
-<!-- TODO: screenshot of a note with inline players next to session prep text -->
 ![Inline players in a session note](screenshots/example.png)
 
 ## Features
 
-- **Inline players** — add `rpg-audio` code blocks to any note and get play/pause, stop, and volume controls right next to your encounter text
-- **Sidebar** — a dedicated panel showing all tracks grouped by type, with global and per-group fade controls
+- **Inline players** — add `rpg-audio` code blocks to any note and get play/pause, stop, volume, loop toggle, and a seek bar right next to your encounter text
+- **Seek bar with region handles** — scrub to any position; drag the start/end handles to set a playback region on the fly (the region is highlighted on the bar and loops independently of the rest of the file)
+- **Sidebar** — a dedicated panel showing all tracks grouped by type with colour-coded section headers, per-track seek bar, and global/per-group fade controls
 - **Scene transitions via `scope:`** — label tracks with one or more context tags; playing a scoped track automatically stops tracks from other scopes
 - **Crossfade** — exclusive transitions fade smoothly (configurable duration, or instant)
 - **Playlists** — list multiple files and they play in sequence, with optional looping
@@ -144,9 +144,9 @@ Click the music note icon in the ribbon (or run the **Toggle audio sidebar** com
 
 - **Global controls** — Fade In All, Fade Out All, and Stop All buttons
 - **Master volume slider** — controls the global volume for all tracks
-- **Tracks grouped by type** — collapsible sections for each type (music, ambience, sfx, etc.)
+- **Tracks grouped by type** — collapsible sections colour-coded by type (purple for music, teal for ambience, amber for sfx)
 - **Per-group fade controls** — fade in or fade out all tracks of a specific type
-- **Per-track controls** — play/pause, stop, and volume slider for each track
+- **Per-track controls** — play/pause, stop, loop toggle, volume slider, and a seek bar with region handles for each track
 - **Playlist status** — current position for multi-file tracks (e.g. "Playing 2/5")
 - **Debug toggle** — bug icon in the footer reveals scope labels, last-event info per track, and the active scope set
 
@@ -164,6 +164,10 @@ Click the music note icon in the ribbon (or run the **Toggle audio sidebar** com
 | `stops`     | No   | Comma-separated list of types or track IDs to stop when this track starts playing. Prefix a token with `!` to exclude. See [Advanced directives](#advanced-directives). |
 | `pauses`    | No   | Like `stops`, but paused tracks keep their position and can be resumed later. |
 | `resumes`   | No   | Comma-separated list of types or track IDs to resume when this track starts. Only affects tracks that are currently paused. |
+| `start` | No       | Timestamp (`m:ss` or seconds) where playback begins within the file. Combined with `end`, defines a default region that loops independently. Can be adjusted at runtime by dragging the seek bar handles. |
+| `end`   | No       | Timestamp (`m:ss` or seconds) where the region ends. Playback loops back to `start` when it reaches this point. |
+| `fadein` | No      | Seconds to fade in from silence when the track starts playing. |
+| `fadeout` | No     | Seconds to fade out to silence before the track ends (or region end). |
 | `file`  | \*       | Path to a single audio file, relative to the vault root (e.g. `audio/thunder.mp3`). |
 | `files` | \*       | A list of audio files (one per line, prefixed with `- `). Files play in order as a playlist. |
 
@@ -240,9 +244,8 @@ Prefix a token with `!` to exclude it. Example: `stops: ambient, !crowd-ambient`
 
 ## Limitations
 
-- **Mobile/tablet volume sliders** — on mobile and tablet, dragging volume sliders in editing mode may conflict with Obsidian's swipe-to-open-sidebar gesture. Switch to reading mode for smoother slider control.
+- **Mobile/tablet sliders** — on mobile and tablet, dragging sliders in editing mode may conflict with Obsidian's swipe-to-open-sidebar gesture. Switch to reading mode for smoother control.
 - **Local files only** — plays audio from your vault, not streaming services or URLs.
-- **No seek/scrubber** — play, pause, and stop only; no jumping to a specific timestamp.
 - **No weighted random** — `random: true` gives each track equal probability; no way to bias towards specific tracks.
 - **No persistent state** — playback resets when Obsidian restarts.
 - **Supported formats** — depends on Electron's audio engine; MP3, OGG, WAV, FLAC, and AAC generally work.
