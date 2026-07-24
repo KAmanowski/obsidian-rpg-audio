@@ -61,6 +61,7 @@ export class AudioManager extends Events {
 	private regionFadeMultipliers: Map<string, number> = new Map();
 	private regionFadeInDone: Set<string> = new Set();
 	private regionOverrides: Map<string, {startTime: number | null; endTime: number | null}> = new Map();
+	private loopOverrides: Map<string, boolean> = new Map();
 
 	constructor(app: App) {
 		super();
@@ -193,6 +194,26 @@ export class AudioManager extends Events {
 		this.regionOverrides.delete(id);
 	}
 
+	getEffectiveLoop(id: string): boolean {
+		if (this.loopOverrides.has(id)) return this.loopOverrides.get(id)!;
+		return this.tracks.get(id)?.def.loop ?? false;
+	}
+
+	setLoopOverride(id: string, value: boolean): void {
+		this.loopOverrides.set(id, value);
+		const el = this.audioElements.get(id);
+		const state = this.tracks.get(id);
+		if (el && state) {
+			const hasReg = this.hasRegion(state.def) || this.regionOverrides.has(id);
+			el.loop = value && state.def.files.length === 1 && !hasReg;
+		}
+		this.trigger(EVENT_TRACK_CHANGED, id);
+	}
+
+	clearLoopOverride(id: string): void {
+		this.loopOverrides.delete(id);
+	}
+
 	private isScopeSubset(child: string[], parent: Set<string>): boolean {
 		for (const s of child) {
 			if (!parent.has(s)) return false;
@@ -270,6 +291,7 @@ export class AudioManager extends Events {
 			this.regionFadeMultipliers.delete(id);
 			this.regionFadeInDone.delete(id);
 			this.regionOverrides.delete(id);
+			this.loopOverrides.delete(id);
 			this.playFades.delete(id);
 			this.stop(id);
 			const el = this.audioElements.get(id);
@@ -383,7 +405,7 @@ export class AudioManager extends Events {
 		const wasPaused = state.playState === PlayState.Paused;
 		if (!wasPaused || !el.src) {
 			el.src = resourceUrl;
-			el.loop = state.def.loop && state.def.files.length === 1 && !this.hasRegion(state.def);
+			el.loop = this.getEffectiveLoop(id) && state.def.files.length === 1 && !this.hasRegion(state.def) && !this.regionOverrides.has(id);
 		}
 
 		// Chromium silently ignores currentTime changes before HAVE_METADATA, so
@@ -518,6 +540,7 @@ export class AudioManager extends Events {
 		this.regionFadeMultipliers.delete(id);
 		this.regionFadeInDone.delete(id);
 		this.regionOverrides.delete(id);
+		this.loopOverrides.delete(id);
 		this.playFades.delete(id);
 
 		const el = this.audioElements.get(id);
@@ -674,6 +697,7 @@ export class AudioManager extends Events {
 		this.regionFadeMultipliers.clear();
 		this.regionFadeInDone.clear();
 		this.regionOverrides.clear();
+		this.loopOverrides.clear();
 		this.playFades.clear();
 		this.unregistering.clear();
 		this._activeScope.clear();
@@ -721,7 +745,7 @@ export class AudioManager extends Events {
 			}
 		}
 
-		if (endTime !== null && def.fadeOutDuration > 0 && !def.loop) {
+		if (endTime !== null && def.fadeOutDuration > 0 && !this.getEffectiveLoop(id)) {
 			const remaining = endTime - currentTime;
 			if (remaining < def.fadeOutDuration) {
 				mult = Math.min(mult, Math.max(0, remaining / def.fadeOutDuration));
@@ -742,7 +766,7 @@ export class AudioManager extends Events {
 			const state = this.tracks.get(id);
 			if (!state) return;
 
-			if (state.def.files.length > 1 && state.def.loop) {
+			if (state.def.files.length > 1 && this.getEffectiveLoop(id)) {
 				if (state.def.random) {
 					let next = Math.floor(Math.random() * state.def.files.length);
 					if (state.def.files.length > 1 && next === state.currentIndex) {
@@ -753,7 +777,7 @@ export class AudioManager extends Events {
 					state.currentIndex = (state.currentIndex + 1) % state.def.files.length;
 				}
 				void this.playCurrentIndex(id);
-			} else if (state.def.files.length === 1 && state.def.loop && (this.hasRegion(state.def) || this.regionOverrides.has(id))) {
+			} else if (state.def.files.length === 1 && this.getEffectiveLoop(id) && (this.hasRegion(state.def) || this.regionOverrides.has(id))) {
 				const region = this.getEffectiveRegion(id);
 				const loopTo = region.startTime ?? 0;
 				el.currentTime = loopTo;
@@ -786,7 +810,7 @@ export class AudioManager extends Events {
 
 			const region = this.getEffectiveRegion(id);
 			if (region.endTime !== null && currentTime >= region.endTime) {
-				if (state.def.loop) {
+				if (this.getEffectiveLoop(id)) {
 					const loopTo = region.startTime ?? 0;
 					el.currentTime = loopTo;
 					const mult = this.computeRegionFade(id, state.def, loopTo);

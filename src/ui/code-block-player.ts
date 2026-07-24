@@ -1,7 +1,18 @@
 import {MarkdownRenderChild, setIcon} from "obsidian";
 import {AudioManager} from "../audio-manager";
 import {AudioTrackDef, PlayState, EVENT_TRACK_CHANGED, EVENT_TIME_UPDATE, DETACH_POLL_INTERVAL_MS} from "../types";
-import {createPlayerControls, updatePlayPauseButton, PlayerControlsElements, createSeekBar, updateSeekBar, SeekBarElements} from "./player-controls";
+import {
+	createTransportButtons,
+	createVolumeControl,
+	createSettingsButtons,
+	createSeekBar,
+	updatePlayPauseButton,
+	updateSettingsButtons,
+	updateSeekBar,
+	TransportElements,
+	SettingsButtonsElements,
+	SeekBarElements,
+} from "./player-controls";
 
 function parseTimestamp(str: string): number | null {
 	const parts = str.split(":").map(p => p.trim());
@@ -148,8 +159,9 @@ export function parseAudioBlock(source: string): AudioTrackDef | null {
 export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 	private manager: AudioManager;
 	private def: AudioTrackDef;
-	private controls: PlayerControlsElements | null = null;
-	private statusEl: HTMLElement | null = null;
+	private transport: TransportElements | null = null;
+	private volumeSlider: HTMLInputElement | null = null;
+	private settingsEl: SettingsButtonsElements | null = null;
 	private seekBarElements: SeekBarElements | null = null;
 	private eventRef: (() => void) | null = null;
 	private timeUpdateRef: (() => void) | null = null;
@@ -175,7 +187,8 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 		const timeHandler = (changedId: string, currentTime: number, duration: number) => {
 			if (changedId !== this.def.id || !this.seekBarElements) return;
 			const region = this.manager.getEffectiveRegion(this.def.id);
-			updateSeekBar(this.seekBarElements, currentTime, duration, region);
+			// Time updates only fire while playing — pass PlayState.Playing for the gradient
+			updateSeekBar(this.seekBarElements, currentTime, duration, region, PlayState.Playing);
 		};
 		this.manager.on(EVENT_TIME_UPDATE, timeHandler);
 		this.timeUpdateRef = () => this.manager.off(EVENT_TIME_UPDATE, timeHandler);
@@ -225,65 +238,47 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 
 		const topRow = el.createDiv({cls: "rpg-audio-player-top"});
 
-		const header = topRow.createDiv({cls: "rpg-audio-header"});
-		const iconEl = header.createSpan({cls: "rpg-audio-icon"});
-		setIcon(iconEl, this.getTypeIcon());
-		header.createSpan({cls: "rpg-audio-name", text: this.def.name});
-		header.createSpan({cls: "rpg-audio-badge", text: this.def.type});
-
-		this.statusEl = topRow.createSpan({cls: "rpg-audio-status-inline"});
-
-		const currentState = this.manager.getTrack(this.def.id);
-		const initialVolume = currentState ? currentState.volume : 1.0;
-
-		this.controls = createPlayerControls(topRow, {
+		// Transport buttons (play/stop) — leftmost
+		this.transport = createTransportButtons(topRow, {
 			onPlay: () => { this.ensureActive(); void this.manager.play(this.def.id); },
 			onPause: () => { this.ensureActive(); this.manager.pause(this.def.id); },
 			onStop: () => { this.ensureActive(); this.manager.stop(this.def.id); },
-			onVolumeChange: (v) => { this.ensureActive(); this.manager.setTrackVolume(this.def.id, v); },
-		}, initialVolume);
+		});
 
-		this.buildInfoBadges(el);
+		// Name + type badge
+		const nameEl = topRow.createSpan({cls: "rpg-audio-name", text: this.def.name});
+		nameEl.setAttribute("title", this.def.name);
 
+		const badge = topRow.createSpan({cls: "rpg-audio-badge"});
+		badge.setText(this.def.type.toUpperCase());
+		badge.dataset.type = this.def.type.toLowerCase();
+
+		// Settings buttons (loop toggle + fade indicator) + volume — right-aligned
+		const currentState = this.manager.getTrack(this.def.id);
+		const initialVolume = currentState ? currentState.volume : 1.0;
+
+		this.settingsEl = createSettingsButtons(topRow, this.def, (newLoop) => {
+			this.ensureActive();
+			this.manager.setLoopOverride(this.def.id, newLoop);
+		});
+
+		this.volumeSlider = createVolumeControl(
+			topRow,
+			(v) => { this.ensureActive(); this.manager.setTrackVolume(this.def.id, v); },
+			initialVolume,
+		);
+
+		// Seek bar (hidden in stopped state via CSS)
 		this.seekBarElements = createSeekBar(el, {
 			onSeek: (time) => { this.ensureActive(); this.manager.seek(this.def.id, time); },
-			onRegionChange: (start, end) => { this.ensureActive(); this.manager.setEffectiveRegion(this.def.id, start, end); },
+			onRegionChange: (start, end) => {
+				this.ensureActive();
+				this.manager.setEffectiveRegion(this.def.id, start, end);
+			},
 		});
 	}
 
-	private buildInfoBadges(parent: HTMLElement): void {
-		const badges: {icon: string; text: string}[] = [];
-
-		if (this.def.loop) {
-			badges.push({icon: "repeat", text: "Loop"});
-		}
-
-		if (this.def.startTime !== null || this.def.endTime !== null) {
-			const startLabel = this.def.startTime !== null ? formatTimestamp(this.def.startTime) : "0:00";
-			const endLabel = this.def.endTime !== null ? formatTimestamp(this.def.endTime) : "end";
-			badges.push({icon: "clock", text: `${startLabel} – ${endLabel}`});
-		}
-
-		if (this.def.fadeInDuration > 0 || this.def.fadeOutDuration > 0) {
-			let fadeText = "";
-			if (this.def.fadeInDuration > 0) fadeText += `↑${this.def.fadeInDuration}s`;
-			if (this.def.fadeInDuration > 0 && this.def.fadeOutDuration > 0) fadeText += " ";
-			if (this.def.fadeOutDuration > 0) fadeText += `↓${this.def.fadeOutDuration}s`;
-			badges.push({icon: "volume-1", text: fadeText});
-		}
-
-		if (badges.length === 0) return;
-
-		const infoRow = parent.createDiv({cls: "rpg-audio-info"});
-		for (const badge of badges) {
-			const badgeEl = infoRow.createSpan({cls: "rpg-audio-info-badge"});
-			const badgeIcon = badgeEl.createSpan();
-			setIcon(badgeIcon, badge.icon);
-			badgeEl.createSpan({text: badge.text});
-		}
-	}
-
-	/** Re-register track and event listener if orphaned (e.g. in embedded notes). */
+	/** Re-register track and event listeners if orphaned (e.g. in embedded notes). */
 	private ensureActive(): void {
 		if (!this.manager.getTrack(this.def.id)) {
 			this.manager.register(this.def);
@@ -299,7 +294,7 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 			const timeHandler = (changedId: string, currentTime: number, duration: number) => {
 				if (changedId !== this.def.id || !this.seekBarElements) return;
 				const region = this.manager.getEffectiveRegion(this.def.id);
-				updateSeekBar(this.seekBarElements, currentTime, duration, region);
+				updateSeekBar(this.seekBarElements, currentTime, duration, region, PlayState.Playing);
 			};
 			this.manager.on(EVENT_TIME_UPDATE, timeHandler);
 			this.timeUpdateRef = () => this.manager.off(EVENT_TIME_UPDATE, timeHandler);
@@ -308,38 +303,25 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 
 	private syncState(): void {
 		const state = this.manager.getTrack(this.def.id);
-		if (!state || !this.controls || !this.statusEl) return;
+		if (!state || !this.transport) return;
 
-		updatePlayPauseButton(this.controls.playPauseBtn, state.playState);
-		this.controls.volumeSlider.value = String(state.volume);
+		updatePlayPauseButton(this.transport.playPauseBtn, state.playState);
+		if (this.volumeSlider) this.volumeSlider.value = String(state.volume);
 
 		this.containerEl.toggleClass("is-playing", state.playState === PlayState.Playing);
 		this.containerEl.toggleClass("is-paused", state.playState === PlayState.Paused);
 		this.containerEl.toggleClass("is-stopped", state.playState === PlayState.Stopped);
 
-		let statusText = "";
-		if (state.error) {
-			statusText = state.error;
-			this.statusEl.addClass("rpg-audio-error-text");
-		} else {
-			this.statusEl.removeClass("rpg-audio-error-text");
-			if (state.playState === PlayState.Playing && state.def.files.length > 1) {
-				statusText = `${state.currentIndex + 1}/${state.def.files.length}`;
-			}
+		if (this.settingsEl) {
+			updateSettingsButtons(this.settingsEl, this.manager.getEffectiveLoop(this.def.id));
 		}
-		this.statusEl.setText(statusText);
 
 		if (this.seekBarElements) {
 			const currentTime = this.manager.getCurrentTime(this.def.id);
 			const duration = this.manager.getDuration(this.def.id);
 			const region = this.manager.getEffectiveRegion(this.def.id);
-			updateSeekBar(this.seekBarElements, currentTime, duration, region);
+			updateSeekBar(this.seekBarElements, currentTime, duration, region, state.playState);
 		}
 	}
 
-	private getTypeIcon(): string {
-		if (this.def.files.length > 1) return "list-music";
-		if (this.def.loop) return "repeat";
-		return "music";
-	}
 }
