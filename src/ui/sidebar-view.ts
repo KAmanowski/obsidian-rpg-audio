@@ -378,14 +378,12 @@ export class RpgAudioSidebarView extends ItemView {
 		badge.setText(track.def.type.toUpperCase());
 		badge.dataset.type = track.def.type.toLowerCase();
 
-		// Row 2: settings buttons + volume (hidden in stopped state via CSS)
-		const row2 = row.createDiv({cls: "rpg-audio-sidebar-track-row2"});
-
-		const settings = createSettingsButtons(row2, track.def, (newLoop) => {
+		// Settings + volume on the same row (hidden in stopped state via CSS)
+		const settings = createSettingsButtons(row1, track.def, (newLoop) => {
 			this.manager.setLoopOverride(track.def.id, newLoop);
 		});
 
-		const volumeSlider = createVolumeControl(row2, (v) => {
+		const volumeSlider = createVolumeControl(row1, (v) => {
 			this.manager.setTrackVolume(track.def.id, v);
 		}, track.volume);
 

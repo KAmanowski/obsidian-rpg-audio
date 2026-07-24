@@ -245,26 +245,25 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 			onStop: () => { this.ensureActive(); this.manager.stop(this.def.id); },
 		});
 
-		// Name + type badge in a header group
-		const header = topRow.createDiv({cls: "rpg-audio-header"});
-		const nameEl = header.createSpan({cls: "rpg-audio-name", text: this.def.name});
+		// Name + type badge
+		const nameEl = topRow.createSpan({cls: "rpg-audio-name", text: this.def.name});
 		nameEl.setAttribute("title", this.def.name);
-		const badge = header.createSpan({cls: "rpg-audio-badge"});
+
+		const badge = topRow.createSpan({cls: "rpg-audio-badge"});
 		badge.setText(this.def.type.toUpperCase());
 		badge.dataset.type = this.def.type.toLowerCase();
 
-		// Right-aligned controls: settings + volume
-		const controls = topRow.createDiv({cls: "rpg-audio-controls"});
+		// Settings buttons (loop toggle + fade indicator) + volume — right-aligned
 		const currentState = this.manager.getTrack(this.def.id);
 		const initialVolume = currentState ? currentState.volume : 1.0;
 
-		this.settingsEl = createSettingsButtons(controls, this.def, (newLoop) => {
+		this.settingsEl = createSettingsButtons(topRow, this.def, (newLoop) => {
 			this.ensureActive();
 			this.manager.setLoopOverride(this.def.id, newLoop);
 		});
 
 		this.volumeSlider = createVolumeControl(
-			controls,
+			topRow,
 			(v) => { this.ensureActive(); this.manager.setTrackVolume(this.def.id, v); },
 			initialVolume,
 		);

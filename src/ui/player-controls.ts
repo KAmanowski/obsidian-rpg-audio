@@ -10,7 +10,6 @@ export interface TransportCallbacks {
 }
 
 export interface TransportElements {
-	container: HTMLElement;
 	playPauseBtn: HTMLButtonElement;
 	stopBtn: HTMLButtonElement;
 }
@@ -19,15 +18,13 @@ export function createTransportButtons(
 	parent: HTMLElement,
 	callbacks: TransportCallbacks,
 ): TransportElements {
-	const container = parent.createDiv({cls: "rpg-audio-transport"});
-
-	const playPauseBtn = container.createEl("button", {
+	const playPauseBtn = parent.createEl("button", {
 		cls: "rpg-audio-btn rpg-audio-play-btn clickable-icon",
 	});
 	setIcon(playPauseBtn, "play");
 	playPauseBtn.setAttribute("aria-label", "Play");
 
-	const stopBtn = container.createEl("button", {
+	const stopBtn = parent.createEl("button", {
 		cls: "rpg-audio-btn rpg-audio-stop-btn clickable-icon",
 	});
 	setIcon(stopBtn, "square");
@@ -42,7 +39,7 @@ export function createTransportButtons(
 	});
 	stopBtn.addEventListener("click", () => callbacks.onStop());
 
-	return {container, playPauseBtn, stopBtn};
+	return {playPauseBtn, stopBtn};
 }
 
 export function updatePlayPauseButton(btn: HTMLButtonElement, state: PlayState): void {
@@ -106,14 +103,12 @@ export function createSettingsButtons(
 	setIcon(loopBtn, "repeat");
 	loopBtn.toggleClass("is-active", def.loop);
 	loopBtn.setAttribute("aria-label", def.loop ? "Loop: on" : "Loop: off");
-	loopBtn.setAttribute("title", def.loop ? "Loop: on" : "Loop: off");
 
 	if (onLoopToggle) {
 		loopBtn.addEventListener("click", () => {
 			const newValue = !loopBtn.hasClass("is-active");
 			loopBtn.toggleClass("is-active", newValue);
 			loopBtn.setAttribute("aria-label", newValue ? "Loop: on" : "Loop: off");
-			loopBtn.setAttribute("title", newValue ? "Loop: on" : "Loop: off");
 			onLoopToggle(newValue);
 		});
 	}
@@ -126,7 +121,6 @@ export function createSettingsButtons(
 		if (def.fadeInDuration > 0) parts.push(`Fade in: ${def.fadeInDuration}s`);
 		if (def.fadeOutDuration > 0) parts.push(`Fade out: ${def.fadeOutDuration}s`);
 		const label = parts.join(" / ");
-		fadeEl.setAttribute("title", label);
 		fadeEl.setAttribute("aria-label", label);
 	}
 
@@ -136,7 +130,6 @@ export function createSettingsButtons(
 export function updateSettingsButtons(elements: SettingsButtonsElements, loopOn: boolean): void {
 	elements.loopBtn.toggleClass("is-active", loopOn);
 	elements.loopBtn.setAttribute("aria-label", loopOn ? "Loop: on" : "Loop: off");
-	elements.loopBtn.setAttribute("title", loopOn ? "Loop: on" : "Loop: off");
 }
 
 // ─── Seek bar ─────────────────────────────────────────────────────────────────
@@ -250,7 +243,7 @@ export function createSeekBar(parent: HTMLElement, callbacks: SeekBarCallbacks):
 			handle.setPointerCapture(e.pointerId);
 
 			const onMove = (ev: PointerEvent) => {
-				const rect = slider.getBoundingClientRect();
+				const rect = track.getBoundingClientRect();
 				const frac = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
 				const duration = parseFloat(container.dataset.duration ?? "0");
 				const time = frac * duration;

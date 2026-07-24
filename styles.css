@@ -27,29 +27,12 @@
 	opacity: 0.55;
 }
 
-/* Top row: [transport] [header] [controls] */
+/* Top row: [play][stop] name badge [loop][fade] [vol] */
 .rpg-audio-player-top {
 	display: flex;
 	align-items: center;
 	gap: 6px;
 	width: 100%;
-}
-
-/* Transport buttons wrapper (play + stop side by side) */
-.rpg-audio-transport {
-	display: flex;
-	align-items: center;
-	gap: 4px;
-	flex-shrink: 0;
-}
-
-/* Header (name + badge) — takes remaining space */
-.rpg-audio-header {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	flex: 1;
-	min-width: 0;
 }
 
 .rpg-audio-name {
@@ -58,15 +41,8 @@
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
-}
-
-/* Right-aligned controls (settings + volume) */
-.rpg-audio-controls {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	flex-shrink: 0;
-	margin-left: auto;
+	flex: 1;
+	min-width: 0;
 }
 
 /* ── Type badge ───────────────────────────────────────────────────────────── */
@@ -141,9 +117,9 @@
 	color: #888a90;
 }
 
-/* Hide controls + seek when stopped (inline player) */
+/* Hide stop button and volume when stopped (inline player) */
 .rpg-audio-player.is-stopped .rpg-audio-stop-btn,
-.rpg-audio-player.is-stopped .rpg-audio-controls,
+.rpg-audio-player.is-stopped .rpg-audio-vol-wrapper,
 .rpg-audio-player.is-stopped .rpg-audio-seek-wrapper {
 	display: none;
 }
@@ -245,12 +221,16 @@
 	width: 100%;
 }
 
+/* Hide seek wrapper when stopped */
+.rpg-audio-player.is-stopped .rpg-audio-seek-wrapper,
+.rpg-audio-sidebar-track.is-stopped .rpg-audio-seek-wrapper {
+	display: none;
+}
+
 .rpg-audio-seek-container {
 	position: relative;
 	width: 100%;
 	height: 20px;
-	display: flex;
-	align-items: center;
 }
 
 /* Visual gradient track (rendered in JS) */
@@ -269,16 +249,16 @@
 
 /* Transparent range input — only thumb is visible */
 .rpg-audio-seek {
-	position: absolute;
-	left: 0;
-	right: 0;
-	top: 0;
-	bottom: 0;
-	width: 100%;
-	height: 100%;
-	-webkit-appearance: none;
-	appearance: none;
-	background: transparent;
+	position: absolute !important;
+	left: 0 !important;
+	top: 0 !important;
+	right: 0 !important;
+	bottom: 0 !important;
+	width: 100% !important;
+	height: 100% !important;
+	-webkit-appearance: none !important;
+	appearance: none !important;
+	background: transparent !important;
 	outline: none;
 	cursor: pointer;
 	z-index: 1;
@@ -287,7 +267,7 @@
 }
 
 .rpg-audio-seek::-webkit-slider-runnable-track {
-	background: transparent;
+	background: transparent !important;
 	height: 10px;
 	border-radius: 5px;
 }
@@ -348,16 +328,10 @@
 .rpg-audio-time-row {
 	display: flex;
 	justify-content: space-between;
-	align-items: center;
-	width: 100%;
 	font-size: 10px;
 	color: #555860;
 	font-variant-numeric: tabular-nums;
 	line-height: 1;
-}
-
-.rpg-audio-time-center:empty {
-	display: none;
 }
 
 .rpg-audio-time-center {
@@ -628,18 +602,10 @@
 	min-width: 0;
 }
 
-/* Row 2: settings + volume — hidden when stopped */
-.rpg-audio-sidebar-track-row2 {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	margin-top: 4px;
-	justify-content: flex-end;
-}
-
-.rpg-audio-sidebar-track.is-stopped .rpg-audio-sidebar-track-row2,
+/* Hide stop/settings/volume when stopped in sidebar */
 .rpg-audio-sidebar-track.is-stopped .rpg-audio-stop-btn,
-.rpg-audio-sidebar-track.is-stopped .rpg-audio-seek-wrapper {
+.rpg-audio-sidebar-track.is-stopped .rpg-audio-settings-buttons,
+.rpg-audio-sidebar-track.is-stopped .rpg-audio-vol-wrapper {
 	display: none;
 }
 
