@@ -47,6 +47,8 @@ export const EVENT_MASTER_VOLUME = "master-volume";
 export const EVENT_ALLOW_AUTOPLAY = "allow-autoplay";
 export const EVENT_ACTIVE_SCOPE_CHANGED = "active-scope-changed";
 export const EVENT_TIME_UPDATE = "time-update";
+export const EVENT_REVERB_CHANGED = "reverb-changed";
+export const EVENT_REVERB_PRESETS_CHANGED = "reverb-presets-changed";
 
 export const SIDEBAR_VIEW_TYPE = "rpg-audio-sidebar";
 

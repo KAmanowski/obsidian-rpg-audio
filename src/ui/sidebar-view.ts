@@ -10,10 +10,13 @@ import {
 	EVENT_ALLOW_AUTOPLAY,
 	EVENT_ACTIVE_SCOPE_CHANGED,
 	EVENT_TIME_UPDATE,
+	EVENT_REVERB_CHANGED,
+	EVENT_REVERB_PRESETS_CHANGED,
 	AudioTrackState,
 	TrackCause,
 	MIN_FADE_DURATION_MS,
 } from "../types";
+import {getAllPresets, REVERB_OFF} from "../reverb-engine";
 import {
 	createTransportButtons,
 	createVolumeControl,
@@ -89,9 +92,12 @@ export class RpgAudioSidebarView extends ItemView {
 	private trackRows: Map<string, TrackRowData> = new Map();
 	private contentArea: HTMLElement | null = null;
 	private masterSlider: HTMLInputElement | null = null;
+	private reverbSelect: HTMLSelectElement | null = null;
+	private reverbWetSlider: HTMLInputElement | null = null;
 	private autoplayBtn: HTMLElement | null = null;
 	private collapsedGroups: Set<string> = new Set();
 	private globalFadeBtn: HTMLElement | null = null;
+	private reverbBypassBtn: HTMLElement | null = null;
 	private typeFadeBtns: Map<string, HTMLElement> = new Map();
 	private debugToggleBtn: HTMLElement | null = null;
 	private activeScopeEl: HTMLElement | null = null;
@@ -153,12 +159,21 @@ export class RpgAudioSidebarView extends ItemView {
 				updateSeekBar(row.seekBar, currentTime, duration, region, PlayState.Playing);
 			})
 		);
+		this.registerEvent(
+			this.manager.on(EVENT_REVERB_PRESETS_CHANGED, () => this.refreshReverbSelect())
+		);
+		this.registerEvent(
+			this.manager.on(EVENT_REVERB_CHANGED, () => this.updateReverbBypassBtn())
+		);
 	}
 
 	async onClose(): Promise<void> {
 		this.trackRows.clear();
 		this.contentArea = null;
 		this.masterSlider = null;
+		this.reverbSelect = null;
+		this.reverbWetSlider = null;
+		this.reverbBypassBtn = null;
 		this.autoplayBtn = null;
 		this.globalFadeBtn = null;
 		this.typeFadeBtns.clear();
@@ -195,6 +210,13 @@ export class RpgAudioSidebarView extends ItemView {
 		stopAllBtn.setAttribute("aria-label", "Stop all");
 		stopAllBtn.addEventListener("click", () => this.manager.stopAll());
 
+		this.reverbBypassBtn = globalControls.createEl("button", {cls: "rpg-audio-btn clickable-icon"});
+		this.reverbBypassBtn.addEventListener("click", () => {
+			if (this.manager.reverbPreset === REVERB_OFF) return;
+			this.manager.reverbBypassed = !this.manager.reverbBypassed;
+		});
+		this.updateReverbBypassBtn();
+
 		const volumeRow = header.createDiv({cls: "rpg-audio-sidebar-volume-row"});
 		const volLabel = volumeRow.createSpan({cls: "rpg-audio-sidebar-vol-label"});
 		setIcon(volLabel, "volume-2");
@@ -210,6 +232,75 @@ export class RpgAudioSidebarView extends ItemView {
 		this.masterSlider.addEventListener("input", () => {
 			this.manager.masterVolume = parseFloat(this.masterSlider!.value);
 		});
+
+		// Reverb controls (prototype — will be replaced by final UI design)
+		const reverbRow = header.createDiv({cls: "rpg-audio-sidebar-reverb-row"});
+
+		const select = reverbRow.createEl("select", {cls: "rpg-audio-reverb-preset dropdown"});
+		this.reverbSelect = select;
+		this.populateReverbSelect(select);
+		select.value = this.manager.reverbPreset;
+		select.addEventListener("change", () => {
+			this.manager.reverbPreset = select.value;
+			this.plugin.settings.reverbPreset = select.value;
+			const wet = this.getWetForPreset(select.value);
+			this.manager.reverbWet = wet;
+			if (this.reverbWetSlider) this.reverbWetSlider.value = String(wet);
+			void this.plugin.saveSettings();
+			this.updateReverbBypassBtn();
+		});
+
+		const wetSlider = reverbRow.createEl("input", {cls: "rpg-audio-volume", type: "range"});
+		this.reverbWetSlider = wetSlider;
+		wetSlider.min = "0";
+		wetSlider.max = "1";
+		wetSlider.step = "0.01";
+		wetSlider.value = String(this.getWetForPreset(this.manager.reverbPreset));
+		wetSlider.addEventListener("input", () => {
+			this.manager.reverbWet = parseFloat(wetSlider.value);
+		});
+		wetSlider.addEventListener("change", () => {
+			this.plugin.settings.reverbWetByPreset[this.manager.reverbPreset] = parseFloat(wetSlider.value);
+			void this.plugin.saveSettings();
+		});
+	}
+
+	private getWetForPreset(id: string): number {
+		return this.plugin.settings.reverbWetByPreset[id] ?? this.plugin.settings.reverbWet;
+	}
+
+	private populateReverbSelect(select: HTMLSelectElement): void {
+		select.empty();
+		select.createEl("option", {value: REVERB_OFF, text: "No reverb"});
+		for (const p of getAllPresets()) {
+			select.createEl("option", {value: p.id, text: p.name});
+		}
+	}
+
+	private updateReverbBypassBtn(): void {
+		if (!this.reverbBypassBtn) return;
+		const hasPreset = this.manager.reverbPreset !== REVERB_OFF;
+		const active = hasPreset && !this.manager.reverbBypassed;
+		setIcon(this.reverbBypassBtn, "waves");
+		this.reverbBypassBtn.setAttribute(
+			"aria-label",
+			!hasPreset ? "No reverb preset selected" :
+			active    ? "Reverb on (click to bypass)" :
+			             "Reverb bypassed (click to enable)"
+		);
+		this.reverbBypassBtn.toggleClass("is-active", active);
+		this.reverbBypassBtn.toggleClass("rpg-audio-btn-disabled", !hasPreset);
+	}
+
+	private refreshReverbSelect(): void {
+		if (!this.reverbSelect) return;
+		this.populateReverbSelect(this.reverbSelect);
+		// manager.reverbPreset is the source of truth — settings.ts already falls
+		// it back to REVERB_OFF if the active preset was just deleted.
+		this.reverbSelect.value = this.manager.reverbPreset;
+		if (this.reverbWetSlider) {
+			this.reverbWetSlider.value = String(this.getWetForPreset(this.manager.reverbPreset));
+		}
 	}
 
 	private buildFooter(container: HTMLElement): void {
