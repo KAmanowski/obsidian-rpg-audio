@@ -397,6 +397,10 @@
 	gap: 8px;
 }
 
+.rpg-audio-reverb-section {
+	margin-top: 10px;
+}
+
 .rpg-audio-sidebar-reverb-row {
 	display: flex;
 	align-items: center;
@@ -408,6 +412,38 @@
 	flex: 1;
 	min-width: 0;
 	font-size: 12px;
+}
+
+.rpg-audio-reverb-wet-label {
+	font-size: 11px;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+.rpg-audio-reverb-wet-slider {
+	flex: 1;
+}
+
+.rpg-audio-reverb-wet-readout {
+	font-size: 11px;
+	color: var(--text-muted);
+	min-width: 30px;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.rpg-audio-reverb-cue {
+	height: 2px;
+	border-radius: 1px;
+	background: transparent;
+	opacity: 0;
+	margin-top: 4px;
+	transition: opacity 0.3s ease, background 0.3s ease;
+}
+
+.rpg-audio-reverb-cue.is-active {
+	opacity: 1;
+	background: var(--interactive-accent);
 }
 
 .rpg-audio-sidebar-vol-label {
@@ -552,6 +588,10 @@
 
 .rpg-audio-sidebar-section-body {
 	padding-top: 4px;
+}
+
+.rpg-audio-sidebar-section-body.is-hidden {
+	display: none;
 }
 
 /* ── Sidebar track rows ───────────────────────────────────────────────────── */

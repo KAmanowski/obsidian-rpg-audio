@@ -67,6 +67,17 @@ export function isBuiltin(id: string): boolean {
 	return REVERB_PRESETS.some(p => p.id === id);
 }
 
+/** First-use wet level for a preset, before the user has set one of their own. */
+export function getDefaultWetLevel(id: string): number {
+	switch (id) {
+		case REVERB_OFF: return 0;
+		case "smallroom": return 0.20;
+		case "mediumroom": return 0.45;
+		case "largeroom": return 0.70;
+		default: return 0.35;
+	}
+}
+
 /** True when a built-in currently has a custom override. */
 export function isOverridden(id: string): boolean {
 	return isBuiltin(id) && customPresets.some(p => p.id === id);

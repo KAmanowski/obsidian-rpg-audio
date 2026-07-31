@@ -5,7 +5,7 @@ import { SIDEBAR_VIEW_TYPE } from "./types";
 import { parseAudioBlock, RpgAudioCodeBlockPlayer } from "./ui/code-block-player";
 import { RpgAudioSidebarView } from "./ui/sidebar-view";
 import { InsertTrackModal } from "./ui/insert-track-modal";
-import { setCustomPresets } from "./reverb-engine";
+import { setCustomPresets, getDefaultWetLevel } from "./reverb-engine";
 
 export default class RpgAudioPlugin extends Plugin {
 	settings: RpgAudioSettings;
@@ -25,7 +25,7 @@ export default class RpgAudioPlugin extends Plugin {
 		this.audioManager.limiterEnabled = this.settings.reverbLimiter;
 		this.audioManager.reverbPreset = this.settings.reverbPreset;
 		this.audioManager.reverbWet =
-			this.settings.reverbWetByPreset[this.settings.reverbPreset] ?? this.settings.reverbWet;
+			this.settings.reverbWetByPreset[this.settings.reverbPreset] ?? getDefaultWetLevel(this.settings.reverbPreset);
 
 		this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new RpgAudioSidebarView(leaf, this));
 

@@ -6,6 +6,7 @@ import {
 	REVERB_OFF,
 	getPreset,
 	getAllPresets,
+	getDefaultWetLevel,
 	isBuiltin,
 	isOverridden,
 	setCustomPresets,
@@ -77,7 +78,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 	}
 
 	private getWetForPreset(id: string): number {
-		return this.plugin.settings.reverbWetByPreset[id] ?? this.plugin.settings.reverbWet;
+		return this.plugin.settings.reverbWetByPreset[id] ?? getDefaultWetLevel(id);
 	}
 
 	private async setWetForPreset(id: string, value: number): Promise<void> {
