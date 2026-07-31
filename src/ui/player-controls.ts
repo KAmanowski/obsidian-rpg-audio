@@ -221,8 +221,8 @@ export function createSeekBar(parent: HTMLElement, callbacks: SeekBarCallbacks):
 	const timeRight = timeRow.createSpan({cls: "rpg-audio-time-right"});
 
 	// Initial dormant handle positions
-	startHandle.style.left = "0%";
-	endHandle.style.left = "100%";
+	startHandle.setCssProps({left: "0%"});
+	endHandle.setCssProps({left: "100%"});
 
 	slider.addEventListener("pointerdown", () => {
 		container.dataset.seeking = "1";
@@ -320,11 +320,11 @@ export function updateSeekBar(
 	elements.startHandle.toggleClass("is-dormant", dormant);
 	elements.endHandle.toggleClass("is-dormant", dormant);
 	if (dormant) {
-		elements.startHandle.style.left = "0%";
-		elements.endHandle.style.left = "100%";
+		elements.startHandle.setCssProps({left: "0%"});
+		elements.endHandle.setCssProps({left: "100%"});
 	} else {
-		elements.startHandle.style.left = `${rs * 100}%`;
-		elements.endHandle.style.left = `${re * 100}%`;
+		elements.startHandle.setCssProps({left: `${rs * 100}%`});
+		elements.endHandle.setCssProps({left: `${re * 100}%`});
 	}
 	elements.startHandle.setAttribute(
 		"title",
@@ -340,7 +340,7 @@ export function updateSeekBar(
 	elements.timeRight.setText(formatTs(duration));
 
 	if (paused) {
-		elements.timeCenter.setText("paused");
+		elements.timeCenter.setText("Paused");
 	} else if (hasRegion) {
 		const startLabel = region.startTime !== null ? formatTs(region.startTime) : "0:00";
 		const endLabel = region.endTime !== null ? formatTs(region.endTime) : formatTs(duration);
