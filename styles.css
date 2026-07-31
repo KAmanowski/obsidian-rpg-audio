@@ -188,28 +188,43 @@
 }
 
 .rpg-audio-volume {
-	width: 40px;
-	height: 3px;
-	-webkit-appearance: none;
-	appearance: none;
-	background: rgba(255,255,255,0.06);
-	border-radius: 2px;
+	width: 40px !important;
+	height: 3px !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	border: none !important;
+	-webkit-appearance: none !important;
+	appearance: none !important;
+	background: rgba(255,255,255,0.06) !important;
+	border-radius: 2px !important;
 	outline: none;
 	touch-action: pan-x;
 }
 
-.rpg-audio-volume::-webkit-slider-thumb {
-	-webkit-appearance: none;
-	appearance: none;
-	width: 10px;
-	height: 10px;
-	border-radius: 50%;
-	background: rgba(255,255,255,0.2);
-	cursor: pointer;
+input[type="range"].rpg-audio-volume::-webkit-slider-runnable-track {
+	width: 100% !important;
+	height: 3px !important;
+	background: transparent !important;
+	border: none !important;
 }
 
-.rpg-audio-volume::-webkit-slider-thumb:hover {
-	background: var(--interactive-accent);
+input[type="range"].rpg-audio-volume::-webkit-slider-thumb {
+	-webkit-appearance: none !important;
+	appearance: none !important;
+	position: relative !important;
+	top: 0 !important;
+	width: 10px !important;
+	height: 10px !important;
+	border-radius: 50% !important;
+	background: rgba(255,255,255,0.2) !important;
+	border: none !important;
+	box-shadow: none !important;
+	cursor: pointer;
+	margin-top: -3.5px !important;
+}
+
+input[type="range"].rpg-audio-volume::-webkit-slider-thumb:hover {
+	background: var(--interactive-accent) !important;
 }
 
 /* ── Seek bar ─────────────────────────────────────────────────────────────── */
@@ -273,19 +288,20 @@
 }
 
 .rpg-audio-seek::-webkit-slider-thumb {
-	-webkit-appearance: none;
-	appearance: none;
-	width: 16px;
-	height: 16px;
-	border-radius: 50%;
-	background: #fff;
+	-webkit-appearance: none !important;
+	appearance: none !important;
+	width: 16px !important;
+	height: 16px !important;
+	border-radius: 50% !important;
+	background: #fff !important;
+	border: none !important;
 	cursor: pointer;
-	box-shadow: 0 1px 5px rgba(0,0,0,0.5), 0 0 0 2px rgba(124,92,191,0.3);
+	box-shadow: 0 1px 5px rgba(0,0,0,0.5), 0 0 0 2px rgba(124,92,191,0.3) !important;
 }
 
 /* Paused: muted thumb */
 .is-paused .rpg-audio-seek::-webkit-slider-thumb {
-	background: rgba(255,255,255,0.7);
+	background: rgba(255,255,255,0.7) !important;
 }
 
 /* ── Region handles ───────────────────────────────────────────────────────── */
