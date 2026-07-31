@@ -255,7 +255,6 @@ export class InsertTrackModal extends Modal {
 				.setName("Start time")
 				.setDesc("Seek to this position on play, for example 0:25 or 1:05:30 (single-file tracks only)")
 				.addText(text => text
-					// eslint-disable-next-line obsidianmd/ui/sentence-case
 					.setPlaceholder("0:25")
 					.onChange(value => { this.startInput = value; }));
 
@@ -263,7 +262,6 @@ export class InsertTrackModal extends Modal {
 				.setName("End time")
 				.setDesc("Stop or loop at this position, for example 1:33 (single-file tracks only)")
 				.addText(text => text
-					// eslint-disable-next-line obsidianmd/ui/sentence-case
 					.setPlaceholder("1:33")
 					.onChange(value => { this.endInput = value; }));
 
@@ -271,7 +269,6 @@ export class InsertTrackModal extends Modal {
 				.setName("Fade in duration")
 				.setDesc("Seconds to fade from silence to full volume after the start time, for example 3")
 				.addText(text => text
-					// eslint-disable-next-line obsidianmd/ui/sentence-case
 					.setPlaceholder("3")
 					.onChange(value => { this.fadeinInput = value; }));
 
@@ -279,7 +276,6 @@ export class InsertTrackModal extends Modal {
 				.setName("Fade out duration")
 				.setDesc("Seconds to fade from full volume to silence before the end time, for example 5")
 				.addText(text => text
-					// eslint-disable-next-line obsidianmd/ui/sentence-case
 					.setPlaceholder("5")
 					.onChange(value => { this.fadeoutInput = value; }));
 		});

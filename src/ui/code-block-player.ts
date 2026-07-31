@@ -1,4 +1,4 @@
-import {MarkdownRenderChild, setIcon} from "obsidian";
+import {MarkdownRenderChild} from "obsidian";
 import {AudioManager} from "../audio-manager";
 import {AudioTrackDef, PlayState, EVENT_TRACK_CHANGED, EVENT_TIME_UPDATE, DETACH_POLL_INTERVAL_MS} from "../types";
 import {
