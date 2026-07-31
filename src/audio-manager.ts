@@ -12,9 +12,12 @@ import {
 	EVENT_ALLOW_AUTOPLAY,
 	EVENT_ACTIVE_SCOPE_CHANGED,
 	EVENT_TIME_UPDATE,
+	EVENT_REVERB_CHANGED,
+	EVENT_REVERB_PRESETS_CHANGED,
 	ORPHAN_CHECK_DELAY_MS,
 } from "./types";
 import { FadeEngine } from "./fade-engine";
+import { ReverbBus, REVERB_OFF, getPreset } from "./reverb-engine";
 
 type CauseInput = {kind: TrackCauseKind; detail?: string};
 
@@ -45,7 +48,17 @@ export class AudioManager extends Events {
 	private tracks: Map<string, AudioTrackState> = new Map();
 	private audioElements: Map<string, HTMLAudioElement> = new Map();
 	private gainNodes: Map<string, GainNode> = new Map();
+	private dryNodes: Map<string, GainNode> = new Map();
+	private sendNodes: Map<string, GainNode> = new Map();
+	private trackSends: Map<string, number> = new Map();
 	private audioContext: AudioContext | null = null;
+	private masterBus: GainNode | null = null;
+	private limiter: DynamicsCompressorNode | null = null;
+	private _limiterEnabled = true;
+	private reverb: ReverbBus | null = null;
+	private _reverbPreset: string = REVERB_OFF;
+	private _reverbWet = 0.35;
+	private _reverbBypassed = false;
 	private orphanTimers: Map<string, number> = new Map();
 	private unregistering: Set<string> = new Set();
 	private _masterVolume = 1.0;
@@ -78,16 +91,91 @@ export class AudioManager extends Events {
 		return this.audioContext;
 	}
 
+	/**
+	 * Everything sums here before the output, so a single limiter can catch peaks.
+	 * Source material is often already mastered near full scale; adding any reverb
+	 * to that has nowhere to go without a safety net.
+	 */
+	private ensureMasterBus(): GainNode {
+		const ctx = this.ensureAudioContext();
+		if (!this.masterBus) {
+			this.masterBus = ctx.createGain();
+			this.limiter = ctx.createDynamicsCompressor();
+			this.limiter.threshold.value = -3;
+			this.limiter.knee.value = 0;
+			this.limiter.ratio.value = 20;
+			this.limiter.attack.value = 0.003;
+			this.limiter.release.value = 0.25;
+			this.applyLimiterRouting();
+		}
+		return this.masterBus;
+	}
+
+	private applyLimiterRouting(): void {
+		const ctx = this.audioContext;
+		if (!ctx || !this.masterBus || !this.limiter) return;
+		this.masterBus.disconnect();
+		this.limiter.disconnect();
+		if (this._limiterEnabled) {
+			this.masterBus.connect(this.limiter);
+			this.limiter.connect(ctx.destination);
+		} else {
+			this.masterBus.connect(ctx.destination);
+		}
+	}
+
+	get limiterEnabled(): boolean { return this._limiterEnabled; }
+	set limiterEnabled(value: boolean) {
+		if (this._limiterEnabled === value) return;
+		this._limiterEnabled = value;
+		this.applyLimiterRouting();
+	}
+
+	private ensureReverbBus(): ReverbBus {
+		const ctx = this.ensureAudioContext();
+		if (!this.reverb) {
+			this.reverb = new ReverbBus(ctx, this.ensureMasterBus());
+			this.reverb.setPreset(this._reverbPreset);
+		}
+		return this.reverb;
+	}
+
+	/** Re-synthesize the active preset after its parameters were edited. */
+	refreshReverb(): void {
+		this.reverb?.refresh();
+		this.applyReverbMixAll();
+	}
+
+	/** Fire after the preset list changes (add/delete/reset) so the sidebar updates. */
+	notifyPresetsChanged(): void {
+		this.trigger(EVENT_REVERB_PRESETS_CHANGED);
+	}
+
 	private getOrCreateGainNode(id: string, el: HTMLAudioElement): GainNode {
 		let gain = this.gainNodes.get(id);
 		if (gain) return gain;
 
 		const ctx = this.ensureAudioContext();
+		const master = this.ensureMasterBus();
+		const bus = this.ensureReverbBus();
 		const source = ctx.createMediaElementSource(el);
 		gain = ctx.createGain();
 		source.connect(gain);
-		gain.connect(ctx.destination);
+
+		// Dry path — gain computed by applyReverbMix.
+		const dry = ctx.createGain();
+		gain.connect(dry);
+		dry.connect(master);
+
+		// Wet send — post-gain so track fades carry the reverb tail with them.
+		const send = ctx.createGain();
+		gain.connect(send);
+		send.connect(bus.input);
+
 		this.gainNodes.set(id, gain);
+		this.dryNodes.set(id, dry);
+		this.sendNodes.set(id, send);
+		this.applyReverbMix(id);
 		return gain;
 	}
 
@@ -139,6 +227,65 @@ export class AudioManager extends Events {
 			this.applyVolume(id);
 		}
 		this.trigger(EVENT_MASTER_VOLUME, this._masterVolume);
+	}
+
+	get reverbPreset(): string { return this._reverbPreset; }
+	set reverbPreset(id: string) {
+		this._reverbPreset = id;
+		if (this.reverb) this.reverb.setPreset(id);
+		this.applyReverbMixAll();
+		this.trigger(EVENT_REVERB_CHANGED, id, this._reverbWet);
+	}
+
+	get reverbBypassed(): boolean { return this._reverbBypassed; }
+	set reverbBypassed(value: boolean) {
+		if (this._reverbBypassed === value) return;
+		this._reverbBypassed = value;
+		if (this.reverb) {
+			this.reverb.setPreset(value ? REVERB_OFF : this._reverbPreset);
+		}
+		this.applyReverbMixAll();
+		this.trigger(EVENT_REVERB_CHANGED, this._reverbPreset, this._reverbWet);
+	}
+
+	get reverbWet(): number { return this._reverbWet; }
+	set reverbWet(value: number) {
+		this._reverbWet = Math.max(0, Math.min(1, value));
+		this.applyReverbMixAll();
+		this.trigger(EVENT_REVERB_CHANGED, this._reverbPreset, this._reverbWet);
+	}
+
+	setTrackReverbSend(id: string, value: number): void {
+		this.trackSends.set(id, Math.max(0, Math.min(1, value)));
+		this.applyReverbMix(id);
+	}
+
+	private applyReverbMix(id: string): void {
+		const dry = this.dryNodes.get(id);
+		const send = this.sendNodes.get(id);
+		if (!dry || !send) return;
+
+		if (this._reverbPreset === REVERB_OFF || this._reverbBypassed) {
+			dry.gain.value = 1;
+			send.gain.value = 0;
+			return;
+		}
+
+		const preset = getPreset(this._reverbPreset);
+		const trim = preset?.wetTrim ?? 1;
+		const trackSend = this.trackSends.get(id) ?? 1;
+		const wet = Math.max(0, Math.min(1, this._reverbWet * trackSend));
+
+		// Send-style mix rather than equal-power. An equal-power crossfade drops the
+		// dry signal to zero at full wet, which kills transients — attacks live almost
+		// entirely in the dry path. Holding dry near unity keeps the punch; the master
+		// limiter absorbs the extra headroom this costs.
+		dry.gain.value = 1 - 0.45 * wet * wet;
+		send.gain.value = wet * trim;
+	}
+
+	private applyReverbMixAll(): void {
+		for (const [id] of this.tracks) this.applyReverbMix(id);
 	}
 
 	getAllTracks(): AudioTrackState[] {
@@ -293,6 +440,7 @@ export class AudioManager extends Events {
 			this.regionOverrides.delete(id);
 			this.loopOverrides.delete(id);
 			this.playFades.delete(id);
+			this.trackSends.delete(id);
 			this.stop(id);
 			const el = this.audioElements.get(id);
 			if (el) {
@@ -306,6 +454,10 @@ export class AudioManager extends Events {
 				gain.disconnect();
 				this.gainNodes.delete(id);
 			}
+			const dry = this.dryNodes.get(id);
+			if (dry) { dry.disconnect(); this.dryNodes.delete(id); }
+			const send = this.sendNodes.get(id);
+			if (send) { send.disconnect(); this.sendNodes.delete(id); }
 			this.tracks.delete(id);
 			this.trigger(EVENT_TRACKS_UPDATED);
 		} finally {
@@ -699,6 +851,7 @@ export class AudioManager extends Events {
 		this.regionOverrides.clear();
 		this.loopOverrides.clear();
 		this.playFades.clear();
+		this.trackSends.clear();
 		this.unregistering.clear();
 		this._activeScope.clear();
 		for (const [, timer] of this.orphanTimers) {
@@ -715,6 +868,20 @@ export class AudioManager extends Events {
 			gain.disconnect();
 		}
 		this.gainNodes.clear();
+		for (const [, dry] of this.dryNodes) {
+			dry.disconnect();
+		}
+		this.dryNodes.clear();
+		for (const [, send] of this.sendNodes) {
+			send.disconnect();
+		}
+		this.sendNodes.clear();
+		this.reverb?.destroy();
+		this.reverb = null;
+		this.limiter?.disconnect();
+		this.limiter = null;
+		this.masterBus?.disconnect();
+		this.masterBus = null;
 		if (this.audioContext) {
 			this.audioContext.close().catch(() => {});
 			this.audioContext = null;
