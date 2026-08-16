@@ -168,6 +168,7 @@ Click the music note icon in the ribbon (or run the **Toggle audio sidebar** com
 | `end`   | No       | Timestamp (`m:ss` or seconds) where the region ends. Playback loops back to `start` when it reaches this point. |
 | `fadein` | No      | Seconds to fade in from silence when the track starts playing. |
 | `fadeout` | No     | Seconds to fade out to silence before the track ends (or region end). |
+| `volume` | No      | Initial volume from `0` (silent) to `1` (full) applied when the track starts. Defaults to `1`. Can still be adjusted afterwards with the player's volume slider. |
 | `file`  | \*       | Path to a single audio file, relative to the vault root (e.g. `audio/thunder.mp3`). |
 | `files` | \*       | A list of audio files (one per line, prefixed with `- `). Files play in order as a playlist. |
 

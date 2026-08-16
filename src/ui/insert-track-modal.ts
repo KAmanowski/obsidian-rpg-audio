@@ -32,6 +32,7 @@ function generateCodeBlock(opts: {
 	end: string;
 	fadein: string;
 	fadeout: string;
+	volume: string;
 }): string {
 	const lines: string[] = [];
 	lines.push(`id: ${opts.id}`);
@@ -48,6 +49,7 @@ function generateCodeBlock(opts: {
 	if (opts.end.trim()) lines.push(`end: ${opts.end.trim()}`);
 	if (opts.fadein.trim()) lines.push(`fadein: ${opts.fadein.trim()}`);
 	if (opts.fadeout.trim()) lines.push(`fadeout: ${opts.fadeout.trim()}`);
+	if (opts.volume.trim() && opts.volume.trim() !== "1") lines.push(`volume: ${opts.volume.trim()}`);
 
 	if (opts.files.length === 1) {
 		lines.push(`file: ${opts.files[0]}`);
@@ -106,6 +108,7 @@ export class InsertTrackModal extends Modal {
 	private endInput = "";
 	private fadeinInput = "";
 	private fadeoutInput = "";
+	private volumeInput = "";
 
 	private fileListEl: HTMLElement | null = null;
 	private insertBtn: HTMLButtonElement | null = null;
@@ -278,6 +281,13 @@ export class InsertTrackModal extends Modal {
 				.addText(text => text
 					.setPlaceholder("5")
 					.onChange(value => { this.fadeoutInput = value; }));
+
+			new Setting(details)
+				.setName("Initial volume")
+				.setDesc("Volume the track starts at, from 0 (silent) to 1 (full). Defaults to 1.")
+				.addText(text => text
+					.setPlaceholder("1")
+					.onChange(value => { this.volumeInput = value; }));
 		});
 
 		// Insert button
@@ -371,6 +381,7 @@ export class InsertTrackModal extends Modal {
 			end: this.endInput,
 			fadein: this.fadeinInput,
 			fadeout: this.fadeoutInput,
+			volume: this.volumeInput,
 		});
 		this.onInsert(block);
 		this.close();

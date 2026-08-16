@@ -419,7 +419,7 @@ export class AudioManager extends Events {
 		this.tracks.set(def.id, {
 			def,
 			playState: PlayState.Stopped,
-			volume: 1.0,
+			volume: def.volume,
 			currentIndex: 0,
 			error: null,
 			lastCause: null,

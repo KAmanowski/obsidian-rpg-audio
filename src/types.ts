@@ -20,6 +20,8 @@ export interface AudioTrackDef {
 	endTime: number | null;
 	fadeInDuration: number;
 	fadeOutDuration: number;
+	/** Initial volume (0-1) applied when the track is first registered. */
+	volume: number;
 }
 
 export type TrackAction = "play" | "pause" | "stop" | "resume";
