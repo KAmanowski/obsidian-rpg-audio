@@ -59,6 +59,7 @@ export function parseAudioBlock(source: string): AudioTrackDef | null {
 	let endTime: number | null = null;
 	let fadeInDuration = 0;
 	let fadeOutDuration = 0;
+	let volume = 1;
 	const files: string[] = [];
 	let inFilesList = false;
 
@@ -140,6 +141,11 @@ export function parseAudioBlock(source: string): AudioTrackDef | null {
 				if (!isNaN(fo)) fadeOutDuration = fo;
 				break;
 			}
+			case "volume": {
+				const v = parseFloat(value);
+				if (!isNaN(v)) volume = Math.max(0, Math.min(1, v));
+				break;
+			}
 			case "file":
 				files.push(value);
 				break;
@@ -153,7 +159,7 @@ export function parseAudioBlock(source: string): AudioTrackDef | null {
 
 	if (!type) type = files.length > 1 ? "playlist" : "sfx";
 
-	return {id, name, type, files, loop, random, autoplay, stops, resumes, pauses, scope, startTime, endTime, fadeInDuration, fadeOutDuration};
+	return {id, name, type, files, loop, random, autoplay, stops, resumes, pauses, scope, startTime, endTime, fadeInDuration, fadeOutDuration, volume};
 }
 
 export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
