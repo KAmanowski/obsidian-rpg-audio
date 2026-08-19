@@ -146,7 +146,7 @@ Click the music note icon in the ribbon (or run the **Toggle audio sidebar** com
 - **Master volume slider** — controls the global volume for all tracks
 - **Tracks grouped by type** — collapsible sections colour-coded by type (purple for music, teal for ambience, amber for sfx)
 - **Per-group fade controls** — fade in or fade out all tracks of a specific type
-- **Per-track controls** — play/pause, stop, loop toggle, volume slider, and a seek bar with region handles for each track
+- **Per-track controls** — play/pause, fade out or stop, loop toggle, volume slider, and a seek bar with region handles for each track
 - **Playlist status** — current position for multi-file tracks (e.g. "Playing 2/5")
 - **Debug toggle** — bug icon in the footer reveals scope labels, last-event info per track, and the active scope set
 
@@ -167,8 +167,8 @@ Click the music note icon in the ribbon (or run the **Toggle audio sidebar** com
 | `resumes`   | No   | Comma-separated list of types or track IDs to resume when this track starts. Only affects tracks that are currently paused. |
 | `start` | No       | Timestamp (`m:ss` or seconds) where playback begins within the file. Combined with `end`, defines a default region that loops independently. Can be adjusted at runtime by dragging the seek bar handles. |
 | `end`   | No       | Timestamp (`m:ss` or seconds) where the region ends. Playback loops back to `start` when it reaches this point. |
-| `fadein` | No      | Seconds to fade in from silence when the track starts playing. |
-| `fadeout` | No     | Seconds to fade out to silence before the track ends (or region end). |
+| `fadein` | No      | Seconds to fade in from silence when the track starts playing (or after `start`, when set). |
+| `fadeout` | No     | Seconds to fade out to silence before the track ends (or region end). A positive value also changes the secondary per-track **Stop** control to **Fade out** while playing. Select it to fade using this duration and stop at the end; during the fade it becomes **Stop**, which stops immediately if selected again. |
 | `volume` | No      | Initial volume from `0` (silent) to `1` (full) applied when the track starts. Defaults to `1`. Can still be adjusted afterwards with the player's volume slider. |
 | `file`  | \*       | Path to a single audio file, relative to the vault root (e.g. `audio/thunder.mp3`). |
 | `files` | \*       | A list of audio files (one per line, prefixed with `- `). Files play in order as a playlist. |

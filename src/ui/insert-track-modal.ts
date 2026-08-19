@@ -281,7 +281,7 @@ export class InsertTrackModal extends Modal {
 
 			new Setting(details)
 				.setName("Fade in duration")
-				.setDesc("Seconds to fade from silence to full volume after the start time, for example 3")
+				.setDesc("Seconds to fade from silence to full volume when the track starts, for example 3")
 				.addText(text => text
 					.setPlaceholder("3")
 					.onChange(value => { this.fadeinInput = value; }));

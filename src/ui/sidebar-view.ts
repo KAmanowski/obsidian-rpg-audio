@@ -23,6 +23,7 @@ import {
 	createSettingsButtons,
 	createSeekBar,
 	updatePlayPauseButton,
+	updateStopFadeButton,
 	updateSettingsButtons,
 	updateSeekBar,
 	SettingsButtonsElements,
@@ -78,6 +79,7 @@ function getTypeColors(type: string): TypeColorSet {
 interface TrackRowData {
 	rowEl: HTMLElement;
 	playPauseBtn: HTMLButtonElement;
+	stopFadeBtn: HTMLButtonElement;
 	volumeSlider: HTMLInputElement;
 	statusEl: HTMLElement;
 	debugEl: HTMLElement;
@@ -161,6 +163,7 @@ export class RpgAudioSidebarView extends ItemView {
 				if (!row) return;
 				const region = this.manager.getEffectiveRegion(id);
 				updateSeekBar(row.seekBar, currentTime, duration, region, PlayState.Playing);
+				this.updateFadingState(row, id);
 			})
 		);
 		this.registerEvent(
@@ -545,7 +548,8 @@ export class RpgAudioSidebarView extends ItemView {
 			onPlay: () => void this.manager.play(track.def.id),
 			onPause: () => this.manager.pause(track.def.id),
 			onStop: () => this.manager.stop(track.def.id),
-		});
+			onFadeOut: () => this.manager.fadeOutAndStop(track.def.id, track.def.fadeOutDuration * 1000),
+		}, track.def.fadeOutDuration > 0);
 		updatePlayPauseButton(transport.playPauseBtn, track.playState);
 
 		const nameEl = row1.createDiv({cls: "rpg-audio-sidebar-track-name", text: track.def.name});
@@ -581,6 +585,7 @@ export class RpgAudioSidebarView extends ItemView {
 		this.trackRows.set(track.def.id, {
 			rowEl: row,
 			playPauseBtn: transport.playPauseBtn,
+			stopFadeBtn: transport.stopBtn,
 			volumeSlider,
 			statusEl,
 			debugEl,
@@ -588,6 +593,8 @@ export class RpgAudioSidebarView extends ItemView {
 			seekBar,
 			settings,
 		});
+		const rowData = this.trackRows.get(track.def.id);
+		if (rowData) this.updateFadingState(rowData, track.def.id);
 	}
 
 	private updateTrackRow(id: string): void {
@@ -597,6 +604,7 @@ export class RpgAudioSidebarView extends ItemView {
 
 		this.applyPlayStateClass(row.rowEl, state.playState);
 		updatePlayPauseButton(row.playPauseBtn, state.playState);
+		this.updateFadingState(row, id);
 		row.volumeSlider.value = String(state.volume);
 		this.setStatusText(row.statusEl, state);
 
@@ -610,6 +618,16 @@ export class RpgAudioSidebarView extends ItemView {
 		updateSeekBar(row.seekBar, currentTime, duration, region, state.playState);
 
 		this.updateDebugEls(row.scopeEl, row.debugEl, state);
+	}
+
+	private updateFadingState(row: TrackRowData, id: string): void {
+		const state = this.manager.getTrack(id);
+		if (!state) return;
+		const isFadingOut = this.manager.isFadingOut(id);
+		const isFadingIn = this.manager.isFadingIn(id) && !isFadingOut;
+		row.rowEl.toggleClass("is-fading-out", isFadingOut);
+		row.rowEl.toggleClass("is-fading-in", isFadingIn);
+		updateStopFadeButton(row.stopFadeBtn, isFadingOut, state.def.fadeOutDuration > 0);
 	}
 
 	private updateDebugEls(scopeEl: HTMLElement, debugEl: HTMLElement, track: AudioTrackState): void {
