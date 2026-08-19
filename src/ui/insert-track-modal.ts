@@ -25,6 +25,7 @@ function generateCodeBlock(opts: {
 	random: boolean;
 	autoplay: boolean;
 	stops: string;
+	fadesout: string;
 	pauses: string;
 	resumes: string;
 	scope: string;
@@ -43,6 +44,7 @@ function generateCodeBlock(opts: {
 	if (opts.autoplay) lines.push("autoplay: true");
 	if (opts.scope.trim()) lines.push(`scope: ${opts.scope.trim()}`);
 	if (opts.stops.trim()) lines.push(`stops: ${opts.stops.trim()}`);
+	if (opts.fadesout.trim()) lines.push(`fadesout: ${opts.fadesout.trim()}`);
 	if (opts.pauses.trim()) lines.push(`pauses: ${opts.pauses.trim()}`);
 	if (opts.resumes.trim()) lines.push(`resumes: ${opts.resumes.trim()}`);
 	if (opts.start.trim()) lines.push(`start: ${opts.start.trim()}`);
@@ -101,6 +103,7 @@ export class InsertTrackModal extends Modal {
 	private random = false;
 	private autoplay = false;
 	private stops = "";
+	private fadesout = "";
 	private pauses = "";
 	private resumes = "";
 	private scopeInput = "";
@@ -239,6 +242,13 @@ export class InsertTrackModal extends Modal {
 					.onChange(value => { this.stops = value; }));
 
 			new Setting(details)
+				.setName("Fades out")
+				.setDesc("Comma-separated types or IDs to fade out using their fade out durations")
+				.addText(text => text
+					.setPlaceholder("music")
+					.onChange(value => { this.fadesout = value; }));
+
+			new Setting(details)
 				.setName("Pauses")
 				.setDesc("Comma-separated types to pause when this plays")
 				.addText(text => text
@@ -374,6 +384,7 @@ export class InsertTrackModal extends Modal {
 			random: this.random,
 			autoplay: this.autoplay,
 			stops: this.stops,
+			fadesout: this.fadesout,
 			pauses: this.pauses,
 			resumes: this.resumes,
 			scope: this.scopeInput,
