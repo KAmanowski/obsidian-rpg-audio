@@ -65,6 +65,10 @@ export class AudioManager extends Events {
 	private _audioFolder = "";
 	private fades = new FadeEngine();
 	private fadeMultipliers: Map<string, number> = new Map();
+	/** Tracks currently undergoing a non-region fade towards silence. */
+	private fadingOut: Set<string> = new Set();
+	/** Tracks currently undergoing a non-region fade towards full volume. */
+	private fadingIn: Set<string> = new Set();
 	private _crossfadeDuration = 0;
 	private _playFadeDuration = 0;
 	private _autoplayDelay = 0;
@@ -306,6 +310,41 @@ export class AudioManager extends Events {
 		return el && isFinite(el.duration) ? el.duration : 0;
 	}
 
+	/** Whether this track is currently fading towards silence, including a region fade-out. */
+	isFadingOut(id: string): boolean {
+		if (this.fadingOut.has(id)) return true;
+		const state = this.tracks.get(id);
+		const el = this.audioElements.get(id);
+		if (!state || !el || state.playState !== PlayState.Playing || this.getEffectiveLoop(id)) return false;
+		const region = this.getEffectiveRegion(id);
+		return region.endTime !== null && state.def.fadeOutDuration > 0
+			&& el.currentTime >= region.endTime - state.def.fadeOutDuration;
+	}
+
+	/** Whether this track is currently fading towards full volume, including a region fade-in. */
+	isFadingIn(id: string): boolean {
+		if (this.fadingIn.has(id)) return true;
+		const state = this.tracks.get(id);
+		const el = this.audioElements.get(id);
+		if (!state || !el || state.playState !== PlayState.Playing) return false;
+		const region = this.getEffectiveRegion(id);
+		return region.startTime !== null && state.def.fadeInDuration > 0
+			&& !this.regionFadeInDone.has(id)
+			&& el.currentTime < region.startTime + state.def.fadeInDuration;
+	}
+
+	private setFadingOut(id: string, value: boolean): void {
+		const changed = value ? !this.fadingOut.has(id) : this.fadingOut.delete(id);
+		if (value) this.fadingOut.add(id);
+		if (changed) this.trigger(EVENT_TRACK_CHANGED, id);
+	}
+
+	private setFadingIn(id: string, value: boolean): void {
+		const changed = value ? !this.fadingIn.has(id) : this.fadingIn.delete(id);
+		if (value) this.fadingIn.add(id);
+		if (changed) this.trigger(EVENT_TRACK_CHANGED, id);
+	}
+
 	seek(id: string, time: number): void {
 		const el = this.audioElements.get(id);
 		const state = this.tracks.get(id);
@@ -434,6 +473,8 @@ export class AudioManager extends Events {
 		this.unregistering.add(id);
 		try {
 			this.fades.cancel(id);
+			this.setFadingOut(id, false);
+			this.setFadingIn(id, false);
 			this.fadeMultipliers.delete(id);
 			this.regionFadeMultipliers.delete(id);
 			this.regionFadeInDone.delete(id);
@@ -577,6 +618,9 @@ export class AudioManager extends Events {
 		// Chromium silently ignores currentTime changes before HAVE_METADATA, so
 		// wait for loadedmetadata before seeking to the region start.
 		const region = this.getEffectiveRegion(id);
+		// A per-track fade-in without a start marker applies when playback starts.
+		// Region fade-ins are calculated from the playhead in computeRegionFade instead.
+		const useTrackFadeIn = !wasPaused && region.startTime === null && state.def.fadeInDuration > 0;
 		if (!wasPaused && region.startTime !== null) {
 			if (el.readyState < HTMLMediaElement.HAVE_METADATA) {
 				await new Promise<void>((resolve) => {
@@ -594,7 +638,9 @@ export class AudioManager extends Events {
 			if (this.hasRegion(state.def) || this.regionOverrides.has(id)) {
 				this.regionFadeMultipliers.set(id, this.computeRegionFade(id, state.def, el.currentTime));
 			}
-			if (useCrossfadeIn) {
+			if (useTrackFadeIn) {
+				this.fadeIn(id, state.def.fadeInDuration * 1000);
+			} else if (useCrossfadeIn) {
 				this.fadeIn(id, this._crossfadeDuration);
 			} else if (usePlayFadeIn) {
 				this.fadeMultipliers.set(id, 0);
@@ -642,6 +688,8 @@ export class AudioManager extends Events {
 		if (el) el.pause();
 
 		this.playFades.delete(id);
+		this.setFadingOut(id, false);
+		this.setFadingIn(id, false);
 		this.fadeMultipliers.delete(id);
 		this.applyVolume(id);
 		state.playState = PlayState.Paused;
@@ -656,6 +704,8 @@ export class AudioManager extends Events {
 			return;
 		}
 		this.playFades.set(id, "out");
+		this.setFadingIn(id, false);
+		this.setFadingOut(id, true);
 		const duration = this._playFadeDuration * current;
 		this.fades.start(id, current, 0, duration, (value) => {
 			this.fadeMultipliers.set(id, value);
@@ -673,9 +723,12 @@ export class AudioManager extends Events {
 	}
 
 	private startPlayFadeIn(id: string): void {
+		this.setFadingOut(id, false);
+		this.setFadingIn(id, true);
 		const current = this.fadeMultipliers.get(id) ?? 0;
 		if (current >= 1) {
 			this.playFades.delete(id);
+			this.setFadingIn(id, false);
 			this.fadeMultipliers.delete(id);
 			this.applyVolume(id);
 			return;
@@ -688,6 +741,7 @@ export class AudioManager extends Events {
 		}).then((completed) => {
 			if (this.playFades.get(id) !== "in") return;
 			this.playFades.delete(id);
+			if (completed) this.setFadingIn(id, false);
 			if (completed) {
 				this.fadeMultipliers.delete(id);
 				this.applyVolume(id);
@@ -702,6 +756,8 @@ export class AudioManager extends Events {
 		if (!state) return;
 
 		this.fades.cancel(id);
+		this.setFadingOut(id, false);
+		this.setFadingIn(id, false);
 		this.fadeMultipliers.delete(id);
 		this.regionFadeMultipliers.delete(id);
 		this.regionFadeInDone.delete(id);
@@ -727,6 +783,8 @@ export class AudioManager extends Events {
 		this.fades.cancelAll();
 		this.fadeMultipliers.clear();
 		this.playFades.clear();
+		this.fadingOut.clear();
+		this.fadingIn.clear();
 		for (const [id] of this.tracks) {
 			this.stop(id, {kind: "user", detail: "stop all"});
 		}
@@ -736,16 +794,7 @@ export class AudioManager extends Events {
 		const cause: CauseInput = {kind: "system", detail: "fade out all"};
 		for (const [id, state] of this.tracks) {
 			if (state.playState === PlayState.Playing) {
-				const current = this.fadeMultipliers.get(id) ?? 1;
-				this.fades.start(id, current, 0, duration, (value) => {
-					this.fadeMultipliers.set(id, value);
-					this.applyVolume(id);
-				}).then((completed) => {
-					if (!completed) return;
-					this.applyPause(id, cause);
-				}).catch((e) => {
-					console.error(`RPG Audio: fade-out failed for "${id}"`, e);
-				});
+				this.fadeOutAndPause(id, duration, cause);
 			}
 		}
 	}
@@ -757,12 +806,7 @@ export class AudioManager extends Events {
 				this.fadeMultipliers.set(id, 0);
 				this.applyVolume(id);
 				this.play(id, true, cause).then(() => {
-					this.fades.start(id, 0, 1, duration, (value) => {
-						this.fadeMultipliers.set(id, value);
-						this.applyVolume(id);
-					}).catch((e) => {
-						console.error(`RPG Audio: fade-in failed for "${id}"`, e);
-					});
+					this.fadeIn(id, duration);
 				}).catch((e) => {
 					console.error(`RPG Audio: fade-in play failed for "${id}"`, e);
 				});
@@ -774,16 +818,7 @@ export class AudioManager extends Events {
 		const cause: CauseInput = {kind: "system", detail: `fade out ${type}`};
 		for (const [id, state] of this.tracks) {
 			if (state.def.type === type && state.playState === PlayState.Playing) {
-				const current = this.fadeMultipliers.get(id) ?? 1;
-				this.fades.start(id, current, 0, duration, (value) => {
-					this.fadeMultipliers.set(id, value);
-					this.applyVolume(id);
-				}).then((completed) => {
-					if (!completed) return;
-					this.applyPause(id, cause);
-				}).catch((e) => {
-					console.error(`RPG Audio: fade-out failed for "${id}"`, e);
-				});
+				this.fadeOutAndPause(id, duration, cause);
 			}
 		}
 	}
@@ -795,12 +830,7 @@ export class AudioManager extends Events {
 				this.fadeMultipliers.set(id, 0);
 				this.applyVolume(id);
 				this.play(id, true, cause).then(() => {
-					this.fades.start(id, 0, 1, duration, (value) => {
-						this.fadeMultipliers.set(id, value);
-						this.applyVolume(id);
-					}).catch((e) => {
-						console.error(`RPG Audio: fade-in failed for "${id}"`, e);
-					});
+					this.fadeIn(id, duration);
 				}).catch((e) => {
 					console.error(`RPG Audio: fade-in play failed for "${id}"`, e);
 				});
@@ -860,6 +890,8 @@ export class AudioManager extends Events {
 	destroyAll(): void {
 		this.fades.destroy();
 		this.fadeMultipliers.clear();
+		this.fadingOut.clear();
+		this.fadingIn.clear();
 		this.regionFadeMultipliers.clear();
 		this.regionFadeInDone.clear();
 		this.regionOverrides.clear();
@@ -1046,12 +1078,14 @@ export class AudioManager extends Events {
 		this.fadeOutThen(id, duration, () => this.applyPause(id, cause));
 	}
 
-	private fadeOutAndStop(id: string, duration: number, cause?: CauseInput): void {
+	fadeOutAndStop(id: string, duration: number, cause?: CauseInput): void {
 		this.fadeOutThen(id, duration, () => this.stop(id, cause));
 	}
 
 	private fadeOutThen(id: string, duration: number, onComplete: () => void): void {
 		const current = this.fadeMultipliers.get(id) ?? 1;
+		this.setFadingIn(id, false);
+		this.setFadingOut(id, true);
 		this.fades.start(id, current, 0, duration, (value) => {
 			this.fadeMultipliers.set(id, value);
 			this.applyVolume(id);
@@ -1063,13 +1097,18 @@ export class AudioManager extends Events {
 	}
 
 	private fadeIn(id: string, duration: number): void {
+		this.setFadingOut(id, false);
+		this.setFadingIn(id, true);
 		this.fadeMultipliers.set(id, 0);
 		this.applyVolume(id);
 		this.fades.start(id, 0, 1, duration, (value) => {
 			this.fadeMultipliers.set(id, value);
 			this.applyVolume(id);
 		}).then((completed) => {
-			if (completed) this.fadeMultipliers.delete(id);
+			if (completed) {
+				this.setFadingIn(id, false);
+				this.fadeMultipliers.delete(id);
+			}
 		}).catch((e) => {
 			console.error(`RPG Audio: fade-in failed for "${id}"`, e);
 		});

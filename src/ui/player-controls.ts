@@ -7,6 +7,7 @@ export interface TransportCallbacks {
 	onPlay: () => void;
 	onPause: () => void;
 	onStop: () => void;
+	onFadeOut?: () => void;
 }
 
 export interface TransportElements {
@@ -17,6 +18,7 @@ export interface TransportElements {
 export function createTransportButtons(
 	parent: HTMLElement,
 	callbacks: TransportCallbacks,
+	hasFadeOut = false,
 ): TransportElements {
 	const playPauseBtn = parent.createEl("button", {
 		cls: "rpg-audio-btn rpg-audio-play-btn clickable-icon",
@@ -27,8 +29,7 @@ export function createTransportButtons(
 	const stopBtn = parent.createEl("button", {
 		cls: "rpg-audio-btn rpg-audio-stop-btn clickable-icon",
 	});
-	setIcon(stopBtn, "square");
-	stopBtn.setAttribute("aria-label", "Stop");
+	updateStopFadeButton(stopBtn, false, hasFadeOut);
 
 	playPauseBtn.addEventListener("click", () => {
 		if (playPauseBtn.dataset["state"] === PlayState.Playing) {
@@ -37,9 +38,28 @@ export function createTransportButtons(
 			callbacks.onPlay();
 		}
 	});
-	stopBtn.addEventListener("click", () => callbacks.onStop());
+	stopBtn.addEventListener("click", () => {
+		if (stopBtn.hasClass("is-fadeout-action") && callbacks.onFadeOut) {
+			callbacks.onFadeOut();
+		} else {
+			callbacks.onStop();
+		}
+	});
 
 	return {playPauseBtn, stopBtn};
+}
+
+/** Update the secondary transport action: fade out first, then stop if clicked again. */
+export function updateStopFadeButton(
+	btn: HTMLButtonElement,
+	isFadingOut: boolean,
+	hasFadeOut: boolean,
+): void {
+	const showFadeOut = hasFadeOut && !isFadingOut;
+	btn.toggleClass("is-fadeout-action", showFadeOut);
+	btn.toggleClass("is-fading-out", isFadingOut);
+	setIcon(btn, showFadeOut ? "volume-x" : "square");
+	btn.setAttribute("aria-label", showFadeOut ? "Fade out" : "Stop");
 }
 
 export function updatePlayPauseButton(btn: HTMLButtonElement, state: PlayState): void {

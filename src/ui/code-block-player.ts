@@ -7,6 +7,7 @@ import {
 	createSettingsButtons,
 	createSeekBar,
 	updatePlayPauseButton,
+	updateStopFadeButton,
 	updateSettingsButtons,
 	updateSeekBar,
 	TransportElements,
@@ -201,6 +202,7 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 			const region = this.manager.getEffectiveRegion(this.def.id);
 			// Time updates only fire while playing — pass PlayState.Playing for the gradient
 			updateSeekBar(this.seekBarElements, currentTime, duration, region, PlayState.Playing);
+			this.syncFadeOutVisualState();
 		};
 		this.manager.on(EVENT_TIME_UPDATE, timeHandler);
 		this.timeUpdateRef = () => this.manager.off(EVENT_TIME_UPDATE, timeHandler);
@@ -255,7 +257,8 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 			onPlay: () => { this.ensureActive(); void this.manager.play(this.def.id); },
 			onPause: () => { this.ensureActive(); this.manager.pause(this.def.id); },
 			onStop: () => { this.ensureActive(); this.manager.stop(this.def.id); },
-		});
+			onFadeOut: () => { this.ensureActive(); this.manager.fadeOutAndStop(this.def.id, this.def.fadeOutDuration * 1000); },
+		}, this.def.fadeOutDuration > 0);
 
 		// Name + type badge
 		const nameEl = topRow.createSpan({cls: "rpg-audio-name", text: this.def.name});
@@ -307,6 +310,7 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 				if (changedId !== this.def.id || !this.seekBarElements) return;
 				const region = this.manager.getEffectiveRegion(this.def.id);
 				updateSeekBar(this.seekBarElements, currentTime, duration, region, PlayState.Playing);
+				this.syncFadeOutVisualState();
 			};
 			this.manager.on(EVENT_TIME_UPDATE, timeHandler);
 			this.timeUpdateRef = () => this.manager.off(EVENT_TIME_UPDATE, timeHandler);
@@ -318,11 +322,16 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 		if (!state || !this.transport) return;
 
 		updatePlayPauseButton(this.transport.playPauseBtn, state.playState);
+		const isFadingOut = this.manager.isFadingOut(this.def.id);
+		const isFadingIn = this.manager.isFadingIn(this.def.id) && !isFadingOut;
+		updateStopFadeButton(this.transport.stopBtn, isFadingOut, this.def.fadeOutDuration > 0);
 		if (this.volumeSlider) this.volumeSlider.value = String(state.volume);
 
 		this.containerEl.toggleClass("is-playing", state.playState === PlayState.Playing);
 		this.containerEl.toggleClass("is-paused", state.playState === PlayState.Paused);
 		this.containerEl.toggleClass("is-stopped", state.playState === PlayState.Stopped);
+		this.containerEl.toggleClass("is-fading-out", isFadingOut);
+		this.containerEl.toggleClass("is-fading-in", isFadingIn);
 
 		if (this.settingsEl) {
 			updateSettingsButtons(this.settingsEl, this.manager.getEffectiveLoop(this.def.id));
@@ -334,6 +343,15 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 			const region = this.manager.getEffectiveRegion(this.def.id);
 			updateSeekBar(this.seekBarElements, currentTime, duration, region, state.playState);
 		}
+	}
+
+	private syncFadeOutVisualState(): void {
+		if (!this.transport) return;
+		const isFadingOut = this.manager.isFadingOut(this.def.id);
+		const isFadingIn = this.manager.isFadingIn(this.def.id) && !isFadingOut;
+		this.containerEl.toggleClass("is-fading-out", isFadingOut);
+		this.containerEl.toggleClass("is-fading-in", isFadingIn);
+		updateStopFadeButton(this.transport.stopBtn, isFadingOut, this.def.fadeOutDuration > 0);
 	}
 
 }

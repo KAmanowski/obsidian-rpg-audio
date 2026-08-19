@@ -27,6 +27,45 @@
 	opacity: 0.55;
 }
 
+.rpg-audio-player.is-fading-out,
+.rpg-audio-sidebar-track.is-fading-out {
+	animation: rpg-audio-fade-out-pulse 0.8s ease-in-out infinite alternate;
+}
+
+.rpg-audio-player.is-fading-in,
+.rpg-audio-sidebar-track.is-fading-in {
+	animation: rpg-audio-fade-in-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes rpg-audio-fade-out-pulse {
+	from { box-shadow: inset 0 0 0 0 rgba(248, 113, 113, 0); }
+	to { box-shadow: inset 0 0 0 2px rgba(248, 113, 113, 0.8), 0 0 12px rgba(248, 113, 113, 0.2); }
+}
+
+@keyframes rpg-audio-fade-in-pulse {
+	from { box-shadow: inset 0 0 0 0 rgba(74, 222, 128, 0); }
+	to { box-shadow: inset 0 0 0 2px rgba(74, 222, 128, 0.8), 0 0 12px rgba(74, 222, 128, 0.2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.rpg-audio-player.is-fading-out,
+	.rpg-audio-sidebar-track.is-fading-out,
+	.rpg-audio-player.is-fading-in,
+	.rpg-audio-sidebar-track.is-fading-in {
+		animation: none;
+	}
+
+	.rpg-audio-player.is-fading-out,
+	.rpg-audio-sidebar-track.is-fading-out {
+		box-shadow: inset 0 0 0 2px rgba(248, 113, 113, 0.8);
+	}
+
+	.rpg-audio-player.is-fading-in,
+	.rpg-audio-sidebar-track.is-fading-in {
+		box-shadow: inset 0 0 0 2px rgba(74, 222, 128, 0.8);
+	}
+}
+
 /* Top row: [play][stop] name badge [loop][fade] [vol] */
 .rpg-audio-player-top {
 	display: flex;
@@ -99,6 +138,15 @@
 .rpg-audio-btn svg {
 	width: 13px;
 	height: 13px;
+	transition: transform 150ms ease, opacity 150ms ease;
+}
+
+.rpg-audio-stop-btn.is-fadeout-action {
+	color: #e8a854;
+}
+
+.rpg-audio-stop-btn.is-fading-out {
+	color: var(--text-error);
 }
 
 /* State-tinted play button */
