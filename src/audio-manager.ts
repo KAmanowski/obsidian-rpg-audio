@@ -479,9 +479,23 @@ export class AudioManager extends Events {
 		}
 
 		let crossfading = false;
+		if (state.def.fadesout.length > 0) {
+			for (const [otherId, other] of this.tracks) {
+				if (otherId !== id && matchesDirective(state.def.fadesout, otherId, other.def.type) && other.playState === PlayState.Playing) {
+					const directiveCause: CauseInput = {kind: "directive", detail: `fadesout from ${id}`};
+					const duration = other.def.fadeOutDuration * 1000;
+					if (duration > 0) {
+						this.fadeOutAndStop(otherId, duration, directiveCause);
+					} else {
+						this.stop(otherId, directiveCause);
+					}
+				}
+			}
+		}
+
 		if (state.def.stops.length > 0) {
 			for (const [otherId, other] of this.tracks) {
-				if (otherId !== id && matchesDirective(state.def.stops, otherId, other.def.type) && other.playState === PlayState.Playing) {
+				if (otherId !== id && matchesDirective(state.def.stops, otherId, other.def.type) && !matchesDirective(state.def.fadesout, otherId, other.def.type) && other.playState === PlayState.Playing) {
 					const directiveCause: CauseInput = {kind: "directive", detail: `stops from ${id}`};
 					if (this._crossfadeDuration > 0) {
 						this.fadeOutAndStop(otherId, this._crossfadeDuration, directiveCause);

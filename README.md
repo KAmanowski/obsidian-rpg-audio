@@ -162,6 +162,7 @@ Click the music note icon in the ribbon (or run the **Toggle audio sidebar** com
 | `random` | No      | `true` or `false`. When enabled, picks a random track on play and (with `loop: true`) shuffles to a different track each time. Defaults to `false`. |
 | `autoplay` | No    | `true` or `false`. When enabled, the track starts playing as soon as it is rendered (e.g. when the note is opened or shown in a hover popover). Requires the sidebar autoplay toggle to be on. Defaults to `false`. |
 | `stops`     | No   | Comma-separated list of types or track IDs to stop when this track starts playing. Prefix a token with `!` to exclude. See [Advanced directives](#advanced-directives). |
+| `fadesout`  | No   | Comma-separated list of types or track IDs to fade out, then stop, when this track starts playing. Each target uses its own `fadeout` duration; targets without one stop immediately. Prefix a token with `!` to exclude. See [Advanced directives](#advanced-directives). |
 | `pauses`    | No   | Like `stops`, but paused tracks keep their position and can be resumed later. |
 | `resumes`   | No   | Comma-separated list of types or track IDs to resume when this track starts. Only affects tracks that are currently paused. |
 | `start` | No       | Timestamp (`m:ss` or seconds) where playback begins within the file. Combined with `end`, defines a default region that loops independently. Can be adjusted at runtime by dragging the seek bar handles. |
@@ -176,11 +177,12 @@ Click the music note icon in the ribbon (or run the **Toggle audio sidebar** com
 
 ## Advanced directives
 
-Most scene-transition use cases are covered by `scope:`. The `stops:` / `pauses:` / `resumes:` directives remain useful for:
+Most scene-transition use cases are covered by `scope:`. The `stops:` / `fadesout:` / `pauses:` / `resumes:` directives remain useful for:
 
 - **One-shot SFX that pauses background audio** — a door-open sfx that pauses ambience until a matching door-close sfx resumes it. This needs explicit pause/resume because you want resume-from-position behavior, which scope's stop semantics don't provide.
 - **Cross-cutting exceptions** — silence a global music bed during a dramatic NPC theme without giving the bed a scope.
 - **Surgical per-id targeting** — `stops: <some-id>` to stop one specific track when this one plays.
+- **Per-track fade-outs** — `fadesout: <some-id>` to use the target track's configured `fadeout` duration before stopping it.
 
 ### Pause-and-resume SFX example
 
@@ -218,7 +220,7 @@ Prefix a token with `!` to exclude it. Example: `stops: ambient, !crowd-ambient`
 
 ## Tips
 
-- Reach for `scope:` first when you want "playing a track means switching to its scene." Reach for `stops:` / `pauses:` / `resumes:` for explicit one-shot transitions or cross-cutting exceptions.
+- Reach for `scope:` first when you want "playing a track means switching to its scene." Reach for `stops:` / `fadesout:` / `pauses:` / `resumes:` for explicit one-shot transitions or cross-cutting exceptions.
 - Keep ambience and SFX as separate types so you can fade out ambience without killing sound effects.
 - Organize your audio folder by type: `audio/music/`, `audio/ambience/`, `audio/sfx/`.
 - File paths can be absolute from the vault root (`audio/music/tavern.mp3`) or relative to the configured audio folder (`music/tavern.mp3`).

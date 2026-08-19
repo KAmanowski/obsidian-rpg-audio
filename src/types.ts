@@ -13,6 +13,8 @@ export interface AudioTrackDef {
 	random: boolean;
 	autoplay: boolean;
 	stops: string[];
+	/** Tracks to fade out using each target track's `fadeout` duration, then stop. */
+	fadesout: string[];
 	resumes: string[];
 	pauses: string[];
 	scope: string[];
