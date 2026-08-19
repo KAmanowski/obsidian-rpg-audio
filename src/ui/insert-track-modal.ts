@@ -242,9 +242,10 @@ export class InsertTrackModal extends Modal {
 					.onChange(value => { this.stops = value; }));
 
 			new Setting(details)
-				.setName("Fades out")
-				.setDesc("Comma-separated types or IDs to fade out using their fade out durations")
+				.setName("Fade out")
+				.setDesc("Comma-separated types or track identifiers to fade out using their fade out durations")
 				.addText(text => text
+					// eslint-disable-next-line obsidianmd/ui/sentence-case
 					.setPlaceholder("music")
 					.onChange(value => { this.fadesout = value; }));
 
