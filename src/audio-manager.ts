@@ -19,6 +19,7 @@ import {
 } from "./types";
 import { FadeEngine } from "./fade-engine";
 import { VolumeFadeController } from "./volume-fade-controller";
+import { findAudioFile } from "./audio-file-resolver";
 import { ReverbBus, REVERB_OFF, getPreset } from "./reverb-engine";
 
 type CauseInput = {kind: TrackCauseKind; detail?: string};
@@ -312,6 +313,10 @@ export class AudioManager extends Events {
 	getDuration(id: string): number {
 		const el = this.audioElements.get(id);
 		return el && isFinite(el.duration) ? el.duration : 0;
+	}
+
+	getMissingAudioFiles(paths: string[]): string[] {
+		return paths.filter(path => !findAudioFile(this.app.vault, this._audioFolder, path));
 	}
 
 	/** Whether this track is currently fading towards silence, including a region fade-out. */
@@ -1179,17 +1184,7 @@ export class AudioManager extends Events {
 	}
 
 	private resolveFile(path: string): string | null {
-		// Try the path as-is first (absolute vault path)
-		let file = this.app.vault.getFileByPath(path);
-		if (file) return this.app.vault.getResourcePath(file);
-
-		// Try relative to the configured audio folder
-		if (this._audioFolder) {
-			const prefixed = `${this._audioFolder}/${path}`;
-			file = this.app.vault.getFileByPath(prefixed);
-			if (file) return this.app.vault.getResourcePath(file);
-		}
-
-		return null;
+		const file = findAudioFile(this.app.vault, this._audioFolder, path);
+		return file ? this.app.vault.getResourcePath(file) : null;
 	}
 }

@@ -25,6 +25,15 @@ export function formatTimestamp(secs: number): string {
 
 export {parseAudioBlock};
 
+export function renderAudioBlockErrors(containerEl: HTMLElement, errors: string[]): void {
+	containerEl.empty();
+	const errorEl = containerEl.createDiv({cls: "rpg-audio-error"});
+	errorEl.setAttribute("role", "alert");
+	errorEl.createDiv({cls: "rpg-audio-error-title", text: "RPG Audio configuration error"});
+	const list = errorEl.createEl("ul", {cls: "rpg-audio-error-list"});
+	for (const error of errors) list.createEl("li", {text: error});
+}
+
 export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 	private manager: AudioManager;
 	private def: AudioTrackDef;

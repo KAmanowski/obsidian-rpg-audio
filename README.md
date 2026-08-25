@@ -15,6 +15,7 @@ Turn your session prep notes into a soundboard — ambience, music, and sound ef
 - **Layered audio** — run ambience, music, and sound effects simultaneously with independent volume controls
 - **Per-player volume fades** — start an inline player at one volume and move linearly to another over a configured number of seconds
 - **Fade controls** — fade in/out individual groups (e.g. fade out all ambience) or everything at once, with red/green direction feedback while volume changes
+- **Visible configuration errors** — invalid settings and missing audio files replace the player with a red error panel that identifies each problem
 - **Autoplay** — mark tracks with `autoplay: true` and they start playing as soon as their note opens or is shown in a hover popover. Gated by a sidebar toggle so prep stays silent and you only flip it on at the start of a session
 - **Insert track command** — a GUI modal for building `rpg-audio` code blocks without remembering the syntax
 - **Debug overlay** — optional sidebar toggle that shows each track's last event and the active scope set, useful when audio behaves unexpectedly
@@ -190,12 +191,20 @@ Click the music note icon in the ribbon (or run the **Toggle audio sidebar** com
 | `fadein` | No      | Seconds to fade in from silence when the track starts playing (or after `start`, when set). |
 | `fadeout` | No     | Seconds to fade out to silence before the track ends (or region end). A positive value also changes the secondary per-track **Stop** control to **Fade out** while playing. Select it to fade using this duration and stop at the end; during the fade it becomes **Stop**, which stops immediately if selected again. |
 | `volume` | No      | Initial volume from `0` (silent) to `1` (full) applied when the track starts. Defaults to `1`. Can still be adjusted afterwards with the player's volume slider. |
-| `volume-fade-to` | No | Target volume from `0` (silent) to `1` (full). Requires `volume-fade-duration`; invalid or incomplete volume-fade settings are ignored. |
+| `volume-fade-to` | No | Target volume from `0` (silent) to `1` (full). Requires `volume-fade-duration`; invalid or incomplete volume-fade settings produce a configuration error. |
 | `volume-fade-duration` | No | Positive number of seconds for a smooth linear transition from `volume` to `volume-fade-to`. Requires `volume-fade-to`. Defaults to no volume fade. |
 | `file`  | \*       | Path to a single audio file, relative to the vault root (e.g. `audio/thunder.mp3`). |
 | `files` | \*       | A list of audio files (one per line, prefixed with `- `). Files play in order as a playlist. |
 
 \* At least one `file` or `files` entry is required.
+
+### Configuration errors
+
+Each code block is validated before its player is registered. If a required setting is missing, a setting name is unknown, a value is malformed, or a referenced audio file cannot be found, the player is replaced by a red error panel listing the exact problems. Invalid players do not autoplay or appear as usable tracks until their code blocks are corrected.
+
+File paths are checked first from the vault root and then relative to the configured **Audio folder**. This is the same lookup order used during playback, so either `audio/music/theme.mp3` or `music/theme.mp3` can be valid when **Audio folder** is `audio`.
+
+This preflight behavior is enabled by default and can be changed under **Settings → RPG Audio → Validate audio blocks**. When disabled, optional setting errors are handled permissively and missing files are reported only when playback is attempted. A block must still contain `id`, `name`, and at least one file path because those fields are required to construct a player. Re-render the code block, for example by reopening its note, after changing the setting.
 
 ## Advanced directives
 
@@ -251,6 +260,7 @@ Prefix a token with `!` to exclude it. Example: `stops: ambient, !crowd-ambient`
 ## Settings
 
 - **Audio folder** — vault-relative folder where your audio files are stored (default: `audio`).
+- **Validate audio blocks** — check settings and file paths before creating a player, showing a red error panel when a problem is found (default: enabled).
 - **Master volume** — global volume multiplier applied to all tracks.
 - **Auto-open sidebar** — automatically open the sidebar when the plugin loads.
 - **Autoplay delay** — duration in milliseconds to wait before an autoplay track actually starts (default: 0ms / instant). If the track unloads during the delay — for example a hover popover is dismissed before the timer fires — playback is cancelled. Useful when moving the mouse around a map with many marker popovers that would otherwise blast audio on every flicker.
