@@ -34,6 +34,8 @@ function generateCodeBlock(opts: {
 	fadein: string;
 	fadeout: string;
 	volume: string;
+	volumeFadeTarget: string;
+	volumeFadeDuration: string;
 }): string {
 	const lines: string[] = [];
 	lines.push(`id: ${opts.id}`);
@@ -52,6 +54,8 @@ function generateCodeBlock(opts: {
 	if (opts.fadein.trim()) lines.push(`fadein: ${opts.fadein.trim()}`);
 	if (opts.fadeout.trim()) lines.push(`fadeout: ${opts.fadeout.trim()}`);
 	if (opts.volume.trim() && opts.volume.trim() !== "1") lines.push(`volume: ${opts.volume.trim()}`);
+	if (opts.volumeFadeTarget.trim()) lines.push(`volume-fade-to: ${opts.volumeFadeTarget.trim()}`);
+	if (opts.volumeFadeDuration.trim()) lines.push(`volume-fade-duration: ${opts.volumeFadeDuration.trim()}`);
 
 	if (opts.files.length === 1) {
 		lines.push(`file: ${opts.files[0]}`);
@@ -112,6 +116,8 @@ export class InsertTrackModal extends Modal {
 	private fadeinInput = "";
 	private fadeoutInput = "";
 	private volumeInput = "";
+	private volumeFadeTargetInput = "";
+	private volumeFadeDurationInput = "";
 
 	private fileListEl: HTMLElement | null = null;
 	private insertBtn: HTMLButtonElement | null = null;
@@ -299,6 +305,20 @@ export class InsertTrackModal extends Modal {
 				.addText(text => text
 					.setPlaceholder("1")
 					.onChange(value => { this.volumeInput = value; }));
+
+			new Setting(details)
+				.setName("Volume fade target")
+				.setDesc("Target volume from 0 to 1. Requires a volume fade duration.")
+				.addText(text => text
+					.setPlaceholder("0.5")
+					.onChange(value => { this.volumeFadeTargetInput = value; }));
+
+			new Setting(details)
+				.setName("Volume fade duration")
+				.setDesc("Seconds for a linear fade from the initial volume to the target volume")
+				.addText(text => text
+					.setPlaceholder("60")
+					.onChange(value => { this.volumeFadeDurationInput = value; }));
 		});
 
 		// Insert button
@@ -394,6 +414,8 @@ export class InsertTrackModal extends Modal {
 			fadein: this.fadeinInput,
 			fadeout: this.fadeoutInput,
 			volume: this.volumeInput,
+			volumeFadeTarget: this.volumeFadeTargetInput,
+			volumeFadeDuration: this.volumeFadeDurationInput,
 		});
 		this.onInsert(block);
 		this.close();

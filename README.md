@@ -13,7 +13,8 @@ Turn your session prep notes into a soundboard — ambience, music, and sound ef
 - **Crossfade** — exclusive transitions fade smoothly (configurable duration, or instant)
 - **Playlists** — list multiple files and they play in sequence, with optional looping
 - **Layered audio** — run ambience, music, and sound effects simultaneously with independent volume controls
-- **Fade controls** — fade in/out individual groups (e.g. fade out all ambience) or everything at once
+- **Per-player volume fades** — start an inline player at one volume and move linearly to another over a configured number of seconds
+- **Fade controls** — fade in/out individual groups (e.g. fade out all ambience) or everything at once, with red/green direction feedback while volume changes
 - **Autoplay** — mark tracks with `autoplay: true` and they start playing as soon as their note opens or is shown in a hover popover. Gated by a sidebar toggle so prep stays silent and you only flip it on at the start of a session
 - **Insert track command** — a GUI modal for building `rpg-audio` code blocks without remembering the syntax
 - **Debug overlay** — optional sidebar toggle that shows each track's last event and the active scope set, useful when audio behaves unexpectedly
@@ -84,6 +85,25 @@ file: audio/sfx/door-creak.mp3
 ```
 ````
 
+### Fade a track to a background level
+
+Set an initial `volume`, then provide both volume-fade fields. This example starts at full volume and fades linearly to half volume over 60 seconds:
+
+````markdown
+```rpg-audio
+id: scene-intro
+name: Scene intro
+type: music
+loop: true
+volume: 1.0
+volume-fade-to: 0.5
+volume-fade-duration: 60
+file: audio/music/scene-intro.mp3
+```
+````
+
+The fade starts on fresh playback. Pausing freezes it and resuming continues it for the remaining time. While volume changes, the track's volume handle slowly blinks red when decreasing or green when increasing; outside a fade it keeps its normal grey/white appearance. Moving that slider cancels the active automation so the manual value takes over. After the track stops, its next fresh play starts again at `volume` and runs a new fade.
+
 ### Scene transitions with `scope:`
 
 `scope:` is a comma-separated list of context labels (any strings you choose). When a scoped track starts playing, the engine sets the **active scope** to that track's labels and stops any other playing track whose scope isn't a subset of the new active set. Tracks with the same scope coexist; tracks without a `scope:` are unaffected by transitions.
@@ -142,11 +162,11 @@ Add `random: true` to shuffle. Without `loop: true`, only one track plays and st
 
 Click the music note icon in the ribbon (or run the **Toggle audio sidebar** command) to open a sidebar panel. The sidebar shows:
 
-- **Global controls** — Fade In All, Fade Out All, and Stop All buttons
+- **Global controls** — Fade In All, Fade Out All, and Stop All buttons; the fade control blinks red or green while affected track volume is decreasing or increasing
 - **Master volume slider** — controls the global volume for all tracks
 - **Tracks grouped by type** — collapsible sections colour-coded by type (purple for music, teal for ambience, amber for sfx)
-- **Per-group fade controls** — fade in or fade out all tracks of a specific type
-- **Per-track controls** — play/pause, fade out or stop, loop toggle, volume slider, and a seek bar with region handles for each track
+- **Per-group fade controls** — fade in or fade out all tracks of a specific type, with matching direction feedback while the group changes
+- **Per-track controls** — play/pause, fade out or stop, loop toggle, volume slider, and a seek bar with region handles for each track; the volume handle blinks red while decreasing and green while increasing
 - **Playlist status** — current position for multi-file tracks (e.g. "Playing 2/5")
 - **Debug toggle** — bug icon in the footer reveals scope labels, last-event info per track, and the active scope set
 
@@ -170,6 +190,8 @@ Click the music note icon in the ribbon (or run the **Toggle audio sidebar** com
 | `fadein` | No      | Seconds to fade in from silence when the track starts playing (or after `start`, when set). |
 | `fadeout` | No     | Seconds to fade out to silence before the track ends (or region end). A positive value also changes the secondary per-track **Stop** control to **Fade out** while playing. Select it to fade using this duration and stop at the end; during the fade it becomes **Stop**, which stops immediately if selected again. |
 | `volume` | No      | Initial volume from `0` (silent) to `1` (full) applied when the track starts. Defaults to `1`. Can still be adjusted afterwards with the player's volume slider. |
+| `volume-fade-to` | No | Target volume from `0` (silent) to `1` (full). Requires `volume-fade-duration`; invalid or incomplete volume-fade settings are ignored. |
+| `volume-fade-duration` | No | Positive number of seconds for a smooth linear transition from `volume` to `volume-fade-to`. Requires `volume-fade-to`. Defaults to no volume fade. |
 | `file`  | \*       | Path to a single audio file, relative to the vault root (e.g. `audio/thunder.mp3`). |
 | `files` | \*       | A list of audio files (one per line, prefixed with `- `). Files play in order as a playlist. |
 

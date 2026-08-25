@@ -1,6 +1,7 @@
 import {MarkdownRenderChild} from "obsidian";
 import {AudioManager} from "../audio-manager";
 import {AudioTrackDef, PlayState, EVENT_TRACK_CHANGED, EVENT_TIME_UPDATE, DETACH_POLL_INTERVAL_MS} from "../types";
+import {parseAudioBlock} from "../audio-block-parser";
 import {
 	createTransportButtons,
 	createVolumeControl,
@@ -10,32 +11,11 @@ import {
 	updateStopFadeButton,
 	updateSettingsButtons,
 	updateSeekBar,
+	updateVolumeChangeFeedback,
 	TransportElements,
 	SettingsButtonsElements,
 	SeekBarElements,
 } from "./player-controls";
-
-function parseTimestamp(str: string): number | null {
-	const parts = str.split(":").map(p => p.trim());
-	if (parts.length === 1) {
-		const s = parseFloat(parts[0] ?? "");
-		return isNaN(s) ? null : s;
-	}
-	if (parts.length === 2) {
-		const m = parseInt(parts[0] ?? "");
-		const s = parseFloat(parts[1] ?? "");
-		if (isNaN(m) || isNaN(s)) return null;
-		return m * 60 + s;
-	}
-	if (parts.length === 3) {
-		const h = parseInt(parts[0] ?? "");
-		const m = parseInt(parts[1] ?? "");
-		const s = parseFloat(parts[2] ?? "");
-		if (isNaN(h) || isNaN(m) || isNaN(s)) return null;
-		return h * 3600 + m * 60 + s;
-	}
-	return null;
-}
 
 export function formatTimestamp(secs: number): string {
 	const m = Math.floor(secs / 60);
@@ -43,131 +23,7 @@ export function formatTimestamp(secs: number): string {
 	return `${m}:${s}`;
 }
 
-export function parseAudioBlock(source: string): AudioTrackDef | null {
-	const lines = source.split("\n").map(l => l.trim()).filter(l => l.length > 0);
-
-	let id = "";
-	let name = "";
-	let type = "";
-	let loop = false;
-	let random = false;
-	let autoplay = false;
-	let stops: string[] = [];
-	let fadesout: string[] = [];
-	let resumes: string[] = [];
-	let pauses: string[] = [];
-	let scope: string[] = [];
-	let startTime: number | null = null;
-	let endTime: number | null = null;
-	let fadeInDuration = 0;
-	let fadeOutDuration = 0;
-	let volume = 1;
-	const files: string[] = [];
-	let inFilesList = false;
-
-	for (const line of lines) {
-		if (inFilesList) {
-			if (line.startsWith("- ")) {
-				files.push(line.slice(2).trim());
-				continue;
-			} else {
-				inFilesList = false;
-			}
-		}
-
-		const colonIdx = line.indexOf(":");
-		if (colonIdx === -1) continue;
-
-		const key = line.slice(0, colonIdx).trim().toLowerCase();
-		const value = line.slice(colonIdx + 1).trim();
-
-		switch (key) {
-			case "id":
-				id = value;
-				break;
-			case "name":
-				name = value;
-				break;
-			case "type":
-				type = value;
-				break;
-			case "loop":
-				loop = value === "true";
-				break;
-			case "random":
-				random = value === "true";
-				break;
-			case "autoplay":
-				autoplay = value === "true";
-				break;
-			case "stops":
-				if (value) {
-					stops = value.split(",").map(s => s.trim()).filter(s => s.length > 0);
-				}
-				break;
-			case "fadesout":
-				if (value) {
-					fadesout = value.split(",").map(s => s.trim()).filter(s => s.length > 0);
-				}
-				break;
-			case "resumes":
-			case "starts": // deprecated alias for `resumes`, kept for backwards compatibility
-				if (value) {
-					resumes = value.split(",").map(s => s.trim()).filter(s => s.length > 0);
-				}
-				break;
-			case "pauses":
-				if (value) {
-					pauses = value.split(",").map(s => s.trim()).filter(s => s.length > 0);
-				}
-				break;
-			case "scope":
-				if (value) {
-					const raw = value.split(",").map(s => s.trim()).filter(s => s.length > 0);
-					for (const token of raw) {
-						if (token.includes("/")) {
-							console.warn(`RPG Audio: scope label "${token}" contains "/" which is reserved for future use`);
-						}
-					}
-					scope = Array.from(new Set(raw));
-				}
-				break;
-			case "start":
-				startTime = parseTimestamp(value);
-				break;
-			case "end":
-				endTime = parseTimestamp(value);
-				break;
-			case "fadein": {
-				const fi = parseFloat(value);
-				if (!isNaN(fi)) fadeInDuration = fi;
-				break;
-			}
-			case "fadeout": {
-				const fo = parseFloat(value);
-				if (!isNaN(fo)) fadeOutDuration = fo;
-				break;
-			}
-			case "volume": {
-				const v = parseFloat(value);
-				if (!isNaN(v)) volume = Math.max(0, Math.min(1, v));
-				break;
-			}
-			case "file":
-				files.push(value);
-				break;
-			case "files":
-				inFilesList = true;
-				break;
-		}
-	}
-
-	if (!id || !name || files.length === 0) return null;
-
-	if (!type) type = files.length > 1 ? "playlist" : "sfx";
-
-	return {id, name, type, files, loop, random, autoplay, stops, fadesout, resumes, pauses, scope, startTime, endTime, fadeInDuration, fadeOutDuration, volume};
-}
+export {parseAudioBlock};
 
 export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 	private manager: AudioManager;
@@ -202,6 +58,11 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 			const region = this.manager.getEffectiveRegion(this.def.id);
 			// Time updates only fire while playing — pass PlayState.Playing for the gradient
 			updateSeekBar(this.seekBarElements, currentTime, duration, region, PlayState.Playing);
+			const state = this.manager.getTrack(this.def.id);
+			if (state && this.volumeSlider) {
+				this.volumeSlider.value = String(state.volume);
+				updateVolumeChangeFeedback(this.volumeSlider, this.manager.getVolumeChangeDirection(this.def.id));
+			}
 			this.syncFadeOutVisualState();
 		};
 		this.manager.on(EVENT_TIME_UPDATE, timeHandler);
@@ -310,6 +171,11 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 				if (changedId !== this.def.id || !this.seekBarElements) return;
 				const region = this.manager.getEffectiveRegion(this.def.id);
 				updateSeekBar(this.seekBarElements, currentTime, duration, region, PlayState.Playing);
+				const state = this.manager.getTrack(this.def.id);
+				if (state && this.volumeSlider) {
+					this.volumeSlider.value = String(state.volume);
+					updateVolumeChangeFeedback(this.volumeSlider, this.manager.getVolumeChangeDirection(this.def.id));
+				}
 				this.syncFadeOutVisualState();
 			};
 			this.manager.on(EVENT_TIME_UPDATE, timeHandler);
@@ -325,7 +191,10 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 		const isFadingOut = this.manager.isFadingOut(this.def.id);
 		const isFadingIn = this.manager.isFadingIn(this.def.id) && !isFadingOut;
 		updateStopFadeButton(this.transport.stopBtn, isFadingOut, this.def.fadeOutDuration > 0);
-		if (this.volumeSlider) this.volumeSlider.value = String(state.volume);
+		if (this.volumeSlider) {
+			this.volumeSlider.value = String(state.volume);
+			updateVolumeChangeFeedback(this.volumeSlider, this.manager.getVolumeChangeDirection(this.def.id));
+		}
 
 		this.containerEl.toggleClass("is-playing", state.playState === PlayState.Playing);
 		this.containerEl.toggleClass("is-paused", state.playState === PlayState.Paused);

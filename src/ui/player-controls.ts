@@ -1,5 +1,5 @@
 import {setIcon} from "obsidian";
-import {PlayState} from "../types";
+import {PlayState, VolumeChangeDirection} from "../types";
 
 // ─── Transport buttons ────────────────────────────────────────────────────────
 
@@ -95,6 +95,7 @@ export function createVolumeControl(
 	setIcon(volIcon, "volume-2");
 
 	const slider = wrapper.createEl("input", {cls: "rpg-audio-volume", type: "range"});
+	slider.setAttribute("aria-label", "Track volume");
 	slider.min = "0";
 	slider.max = "1";
 	slider.step = "0.01";
@@ -102,6 +103,16 @@ export function createVolumeControl(
 	slider.addEventListener("input", () => onChange(parseFloat(slider.value)));
 
 	return slider;
+}
+
+export function updateVolumeChangeFeedback(
+	slider: HTMLInputElement,
+	direction: VolumeChangeDirection,
+): void {
+	slider.toggleClass("is-volume-increasing", direction === "increasing");
+	slider.toggleClass("is-volume-decreasing", direction === "decreasing");
+	const directionLabel = direction ? `, ${direction}` : "";
+	slider.setAttribute("aria-label", `Track volume${directionLabel}`);
 }
 
 // ─── Settings buttons (loop toggle + fade indicator) ─────────────────────────
@@ -114,7 +125,14 @@ export interface SettingsButtonsElements {
 
 export function createSettingsButtons(
 	parent: HTMLElement,
-	def: {loop: boolean; fadeInDuration: number; fadeOutDuration: number},
+	def: {
+		loop: boolean;
+		fadeInDuration: number;
+		fadeOutDuration: number;
+		volume: number;
+		volumeFadeTarget: number | null;
+		volumeFadeDuration: number;
+	},
 	onLoopToggle?: (newValue: boolean) => void,
 ): SettingsButtonsElements {
 	const container = parent.createDiv({cls: "rpg-audio-settings-buttons"});
@@ -134,12 +152,15 @@ export function createSettingsButtons(
 	}
 
 	let fadeEl: HTMLElement | null = null;
-	if (def.fadeInDuration > 0 || def.fadeOutDuration > 0) {
+	if (def.fadeInDuration > 0 || def.fadeOutDuration > 0 || def.volumeFadeTarget !== null) {
 		fadeEl = container.createSpan({cls: "rpg-audio-settings-btn is-active"});
 		setIcon(fadeEl, "activity");
 		const parts: string[] = [];
 		if (def.fadeInDuration > 0) parts.push(`Fade in: ${def.fadeInDuration}s`);
 		if (def.fadeOutDuration > 0) parts.push(`Fade out: ${def.fadeOutDuration}s`);
+		if (def.volumeFadeTarget !== null) {
+			parts.push(`Volume: ${Math.round(def.volume * 100)}% to ${Math.round(def.volumeFadeTarget * 100)}% over ${def.volumeFadeDuration}s`);
+		}
 		const label = parts.join(" / ");
 		fadeEl.setAttribute("aria-label", label);
 	}

@@ -24,10 +24,15 @@ export interface AudioTrackDef {
 	fadeOutDuration: number;
 	/** Initial volume (0-1) applied when the track is first registered. */
 	volume: number;
+	/** Target volume (0-1) for the optional per-playback volume fade. */
+	volumeFadeTarget: number | null;
+	/** Duration of the per-playback volume fade, in seconds. */
+	volumeFadeDuration: number;
 }
 
 export type TrackAction = "play" | "pause" | "stop" | "resume";
 export type TrackCauseKind = "user" | "directive" | "scope" | "autoplay" | "system" | "ended";
+export type VolumeChangeDirection = "increasing" | "decreasing" | null;
 
 export interface TrackCause {
 	action: TrackAction;

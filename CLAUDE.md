@@ -23,7 +23,9 @@ Zero external runtime dependencies — only the `obsidian` API. TypeScript sourc
 |------|---------------|
 | `src/main.ts` | Plugin lifecycle: loads settings, creates AudioManager, registers code block processor, sidebar view, commands, settings tab |
 | `src/audio-manager.ts` | Core engine: manages tracks, HTMLAudioElements, GainNodes, AudioContext, play/pause/stop/fade, scope transitions, directive matching, orphan cleanup |
+| `src/audio-block-parser.ts` | Parses and validates `rpg-audio` block syntax into `AudioTrackDef` without UI/runtime dependencies |
 | `src/fade-engine.ts` | Generic `requestAnimationFrame`-based linear value interpolation engine |
+| `src/volume-fade-controller.ts` | Pausable per-track volume automation built on its own `FadeEngine` lane |
 | `src/types.ts` | `PlayState` enum, `AudioTrackDef`/`AudioTrackState`/`TrackCause` interfaces, event constants, timing constants |
 | `src/settings.ts` | `RpgAudioSettings` interface, defaults, settings tab UI |
 | `src/ui/code-block-player.ts` | Parses code block syntax into `AudioTrackDef`, renders inline player widget, handles autoplay |
@@ -41,14 +43,16 @@ HTMLAudioElement → MediaElementAudioSourceNode → GainNode → AudioContext.d
 ```
 
 - One `AudioContext` shared by all tracks (lazy-created)
-- Per-track `GainNode` for volume: `gain.value = trackVolume * masterVolume * fadeMultiplier`
+- Per-track `GainNode` for volume: `gain.value = trackVolume * masterVolume * fadeMultiplier * regionFadeMultiplier`
 - `FadeEngine` animates `fadeMultiplier` via `requestAnimationFrame` (linear interpolation)
+- Configured volume automation uses a separate `FadeEngine` and changes `trackVolume`, so it can coexist with transport, crossfade, and region fade multipliers
+- Automated volume direction is exposed as `increasing` / `decreasing`; per-track slider thumbs and global/type fade icons use green/red feedback, with static colour under reduced-motion preferences
 
 ### Key Data Structures
 
-- `AudioTrackDef` — parsed from code block: id, name, type, files[], loop, random, autoplay, stops[], resumes[], pauses[], scope[]
+- `AudioTrackDef` — parsed from code block, including playback/directive/region fields and optional `volumeFadeTarget` / `volumeFadeDuration`
 - `AudioTrackState` — runtime state: def, playState, volume, currentIndex, error, lastCause
-- Maps keyed by track `id`: `tracks`, `audioElements`, `gainNodes`, `fadeMultipliers`, `playFades`
+- Maps keyed by track `id`: `tracks`, `audioElements`, `gainNodes`, transport/region fade multipliers, configured volume fades, and runtime region/loop overrides
 
 ### Code Block Syntax
 
