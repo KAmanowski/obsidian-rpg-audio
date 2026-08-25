@@ -2,7 +2,9 @@ import { Plugin } from "obsidian";
 import { DEFAULT_SETTINGS, RpgAudioSettings, RpgAudioSettingTab } from "./settings";
 import { AudioManager } from "./audio-manager";
 import { SIDEBAR_VIEW_TYPE } from "./types";
-import { parseAudioBlock, RpgAudioCodeBlockPlayer } from "./ui/code-block-player";
+import { parseAudioBlockDetailed } from "./audio-block-parser";
+import { getAudioBlockErrors } from "./audio-block-validation";
+import { renderAudioBlockErrors, RpgAudioCodeBlockPlayer } from "./ui/code-block-player";
 import { RpgAudioSidebarView } from "./ui/sidebar-view";
 import { InsertTrackModal } from "./ui/insert-track-modal";
 import { setCustomPresets, getDefaultWetLevel } from "./reverb-engine";
@@ -30,12 +32,16 @@ export default class RpgAudioPlugin extends Plugin {
 		this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new RpgAudioSidebarView(leaf, this));
 
 		this.registerMarkdownCodeBlockProcessor("rpg-audio", (source, el, ctx) => {
-			const def = parseAudioBlock(source);
-			if (!def) {
-				el.createDiv({ cls: "rpg-audio-error", text: "Invalid rpg-audio block. Requires: id, name, type, and file/files." });
+			const result = parseAudioBlockDetailed(source);
+			const missingFiles = this.settings.validateAudioBlocks && result.def
+				? this.audioManager.getMissingAudioFiles(result.def.files)
+				: [];
+			const errors = getAudioBlockErrors(result, missingFiles, this.settings.validateAudioBlocks);
+			if (!result.def || errors.length > 0) {
+				renderAudioBlockErrors(el, errors);
 				return;
 			}
-			const player = new RpgAudioCodeBlockPlayer(el, this.audioManager, def);
+			const player = new RpgAudioCodeBlockPlayer(el, this.audioManager, result.def);
 			ctx.addChild(player);
 		});
 

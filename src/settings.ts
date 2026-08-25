@@ -14,6 +14,7 @@ import {
 
 export interface RpgAudioSettings {
 	audioFolder: string;
+	validateAudioBlocks: boolean;
 	masterVolume: number;
 	autoOpenSidebar: boolean;
 	allowAutoplay: boolean;
@@ -31,6 +32,7 @@ export interface RpgAudioSettings {
 
 export const DEFAULT_SETTINGS: RpgAudioSettings = {
 	audioFolder: "audio",
+	validateAudioBlocks: true,
 	masterVolume: 1.0,
 	autoOpenSidebar: true,
 	allowAutoplay: false,
@@ -138,6 +140,16 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.audioFolder = value;
 					this.plugin.audioManager.audioFolder = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Validate audio blocks")
+			.setDesc("Check settings and file paths before creating a player. Disable to use permissive parsing.")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.validateAudioBlocks)
+				.onChange(async (value) => {
+					this.plugin.settings.validateAudioBlocks = value;
 					await this.plugin.saveSettings();
 				}));
 
