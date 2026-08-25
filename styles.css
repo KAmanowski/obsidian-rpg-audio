@@ -275,6 +275,57 @@ input[type="range"].rpg-audio-volume::-webkit-slider-thumb:hover {
 	background: var(--interactive-accent) !important;
 }
 
+/* Direction feedback for automated track-volume changes. */
+input[type="range"].rpg-audio-volume.is-volume-decreasing::-webkit-slider-thumb {
+	background: #f87171 !important;
+	animation: rpg-audio-volume-feedback-blink 1.5s ease-in-out infinite alternate;
+}
+
+input[type="range"].rpg-audio-volume.is-volume-increasing::-webkit-slider-thumb {
+	background: #4ade80 !important;
+	animation: rpg-audio-volume-feedback-blink 1.5s ease-in-out infinite alternate;
+}
+
+input[type="range"].rpg-audio-volume.is-volume-decreasing::-moz-range-thumb {
+	background: #f87171;
+	animation: rpg-audio-volume-feedback-blink 1.5s ease-in-out infinite alternate;
+}
+
+input[type="range"].rpg-audio-volume.is-volume-increasing::-moz-range-thumb {
+	background: #4ade80;
+	animation: rpg-audio-volume-feedback-blink 1.5s ease-in-out infinite alternate;
+}
+
+.rpg-audio-btn.is-volume-decreasing {
+	color: #f87171;
+}
+
+.rpg-audio-btn.is-volume-increasing {
+	color: #4ade80;
+}
+
+.rpg-audio-btn.is-volume-decreasing svg,
+.rpg-audio-btn.is-volume-increasing svg {
+	animation: rpg-audio-volume-feedback-blink 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes rpg-audio-volume-feedback-blink {
+	from { opacity: 0.35; }
+	to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	input[type="range"].rpg-audio-volume.is-volume-decreasing::-webkit-slider-thumb,
+	input[type="range"].rpg-audio-volume.is-volume-increasing::-webkit-slider-thumb,
+	input[type="range"].rpg-audio-volume.is-volume-decreasing::-moz-range-thumb,
+	input[type="range"].rpg-audio-volume.is-volume-increasing::-moz-range-thumb,
+	.rpg-audio-btn.is-volume-decreasing svg,
+	.rpg-audio-btn.is-volume-increasing svg {
+		animation: none;
+		opacity: 1;
+	}
+}
+
 /* ── Seek bar ─────────────────────────────────────────────────────────────── */
 
 .rpg-audio-seek-wrapper {

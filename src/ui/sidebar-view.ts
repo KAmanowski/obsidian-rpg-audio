@@ -15,6 +15,7 @@ import {
 	AudioTrackState,
 	TrackCause,
 	MIN_FADE_DURATION_MS,
+	VolumeChangeDirection,
 } from "../types";
 import {getAllPresets, getDefaultWetLevel, REVERB_OFF} from "../reverb-engine";
 import {
@@ -26,6 +27,7 @@ import {
 	updateStopFadeButton,
 	updateSettingsButtons,
 	updateSeekBar,
+	updateVolumeChangeFeedback,
 	SettingsButtonsElements,
 	SeekBarElements,
 } from "./player-controls";
@@ -163,7 +165,13 @@ export class RpgAudioSidebarView extends ItemView {
 				if (!row) return;
 				const region = this.manager.getEffectiveRegion(id);
 				updateSeekBar(row.seekBar, currentTime, duration, region, PlayState.Playing);
+				const state = this.manager.getTrack(id);
+				if (state) {
+					row.volumeSlider.value = String(state.volume);
+					updateVolumeChangeFeedback(row.volumeSlider, this.manager.getVolumeChangeDirection(id));
+				}
 				this.updateFadingState(row, id);
+				this.updateFadeButtons();
 			})
 		);
 		this.registerEvent(
@@ -216,7 +224,12 @@ export class RpgAudioSidebarView extends ItemView {
 				this.manager.fadeInAll(fadeDuration());
 			}
 		});
-		this.updateFadeToggle(this.globalFadeBtn, this.hasPlayingTracks(), this.hasPausedTracks());
+		this.updateFadeToggle(
+			this.globalFadeBtn,
+			this.hasPlayingTracks(),
+			this.hasPausedTracks(),
+			this.getVolumeChangeDirection(),
+		);
 
 		const stopAllBtn = globalControls.createEl("button", {cls: "rpg-audio-btn rpg-audio-stop-all-btn clickable-icon"});
 		setIcon(stopAllBtn, "square");
@@ -517,7 +530,12 @@ export class RpgAudioSidebarView extends ItemView {
 				}
 			});
 			this.typeFadeBtns.set(type, fadeToggleBtn);
-			this.updateFadeToggle(fadeToggleBtn, this.hasPlayingTracksOfType(type), this.hasPausedTracksOfType(type));
+			this.updateFadeToggle(
+				fadeToggleBtn,
+				this.hasPlayingTracksOfType(type),
+				this.hasPausedTracksOfType(type),
+				this.getVolumeChangeDirection(type),
+			);
 
 			sectionHeader.addEventListener("click", () => {
 				if (this.collapsedGroups.has(type)) {
@@ -627,6 +645,7 @@ export class RpgAudioSidebarView extends ItemView {
 		const isFadingIn = this.manager.isFadingIn(id) && !isFadingOut;
 		row.rowEl.toggleClass("is-fading-out", isFadingOut);
 		row.rowEl.toggleClass("is-fading-in", isFadingIn);
+		updateVolumeChangeFeedback(row.volumeSlider, this.manager.getVolumeChangeDirection(id));
 		updateStopFadeButton(row.stopFadeBtn, isFadingOut, state.def.fadeOutDuration > 0);
 	}
 
@@ -683,20 +702,33 @@ export class RpgAudioSidebarView extends ItemView {
 		return this.manager.getAllTracks().some(t => t.def.type === type && t.playState === PlayState.Paused);
 	}
 
-	private updateFadeToggle(btn: HTMLElement, hasPlaying: boolean, hasPaused: boolean): void {
+	private updateFadeToggle(
+		btn: HTMLElement,
+		hasPlaying: boolean,
+		hasPaused: boolean,
+		direction: VolumeChangeDirection = null,
+	): void {
+		btn.toggleClass("is-volume-increasing", direction === "increasing");
+		btn.toggleClass("is-volume-decreasing", direction === "decreasing");
+		const status = direction ? ` (volume ${direction})` : "";
+		let icon = "volume-x";
+		let label = "Fade out";
+		let disabled = false;
 		if (hasPlaying) {
-			setIcon(btn, "volume-x");
-			btn.setAttribute("aria-label", "Fade out");
-			btn.removeClass("rpg-audio-btn-disabled");
+			// Fade-out action remains available while tracks are playing.
 		} else if (hasPaused) {
-			setIcon(btn, "volume-2");
-			btn.setAttribute("aria-label", "Fade in");
-			btn.removeClass("rpg-audio-btn-disabled");
+			icon = "volume-2";
+			label = "Fade in";
 		} else {
-			setIcon(btn, "volume-x");
-			btn.setAttribute("aria-label", "Fade out");
-			btn.addClass("rpg-audio-btn-disabled");
+			disabled = true;
 		}
+		// Avoid replacing the SVG on every timeupdate, which would restart its blink.
+		if (btn.dataset["fadeIcon"] !== icon) {
+			setIcon(btn, icon);
+			btn.dataset["fadeIcon"] = icon;
+		}
+		btn.setAttribute("aria-label", `${label}${status}`);
+		btn.toggleClass("rpg-audio-btn-disabled", disabled);
 	}
 
 	private updateAutoplayBtn(): void {
@@ -721,11 +753,32 @@ export class RpgAudioSidebarView extends ItemView {
 
 	private updateFadeButtons(): void {
 		if (this.globalFadeBtn) {
-			this.updateFadeToggle(this.globalFadeBtn, this.hasPlayingTracks(), this.hasPausedTracks());
+			this.updateFadeToggle(
+				this.globalFadeBtn,
+				this.hasPlayingTracks(),
+				this.hasPausedTracks(),
+				this.getVolumeChangeDirection(),
+			);
 		}
 		for (const [type, btn] of this.typeFadeBtns) {
-			this.updateFadeToggle(btn, this.hasPlayingTracksOfType(type), this.hasPausedTracksOfType(type));
+			this.updateFadeToggle(
+				btn,
+				this.hasPlayingTracksOfType(type),
+				this.hasPausedTracksOfType(type),
+				this.getVolumeChangeDirection(type),
+			);
 		}
+	}
+
+	private getVolumeChangeDirection(type?: string): VolumeChangeDirection {
+		let increasing = false;
+		for (const track of this.manager.getAllTracks()) {
+			if (type !== undefined && track.def.type !== type) continue;
+			const direction = this.manager.getVolumeChangeDirection(track.def.id);
+			if (direction === "decreasing") return direction;
+			if (direction === "increasing") increasing = true;
+		}
+		return increasing ? "increasing" : null;
 	}
 
 	private applyPlayStateClass(el: HTMLElement, playState: PlayState): void {

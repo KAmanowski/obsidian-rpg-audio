@@ -6,6 +6,7 @@ import {
 	TrackCause,
 	TrackCauseKind,
 	TrackAction,
+	VolumeChangeDirection,
 	EVENT_TRACK_CHANGED,
 	EVENT_TRACKS_UPDATED,
 	EVENT_MASTER_VOLUME,
@@ -17,6 +18,7 @@ import {
 	ORPHAN_CHECK_DELAY_MS,
 } from "./types";
 import { FadeEngine } from "./fade-engine";
+import { VolumeFadeController } from "./volume-fade-controller";
 import { ReverbBus, REVERB_OFF, getPreset } from "./reverb-engine";
 
 type CauseInput = {kind: TrackCauseKind; detail?: string};
@@ -64,6 +66,8 @@ export class AudioManager extends Events {
 	private _masterVolume = 1.0;
 	private _audioFolder = "";
 	private fades = new FadeEngine();
+	/** Independent lane so configured volume automation cannot cancel transport fades. */
+	private volumeFades = new VolumeFadeController();
 	private fadeMultipliers: Map<string, number> = new Map();
 	/** Tracks currently undergoing a non-region fade towards silence. */
 	private fadingOut: Set<string> = new Set();
@@ -333,6 +337,17 @@ export class AudioManager extends Events {
 			&& el.currentTime < region.startTime + state.def.fadeInDuration;
 	}
 
+	/** Direction of the track's effective volume change for UI feedback. */
+	getVolumeChangeDirection(id: string): VolumeChangeDirection {
+		// Explicit outgoing fades remain red. Otherwise the configured volume
+		// direction takes precedence so a downward automation never flashes green
+		// merely because playback also has a short incoming fade multiplier.
+		if (this.isFadingOut(id)) return "decreasing";
+		const configuredDirection = this.volumeFades.getDirection(id);
+		if (configuredDirection) return configuredDirection;
+		return this.isFadingIn(id) ? "increasing" : null;
+	}
+
 	private setFadingOut(id: string, value: boolean): void {
 		const changed = value ? !this.fadingOut.has(id) : this.fadingOut.delete(id);
 		if (value) this.fadingOut.add(id);
@@ -472,6 +487,7 @@ export class AudioManager extends Events {
 		if (this.unregistering.has(id)) return;
 		this.unregistering.add(id);
 		try {
+			this.cancelConfiguredVolumeFade(id);
 			this.fades.cancel(id);
 			this.setFadingOut(id, false);
 			this.setFadingIn(id, false);
@@ -610,6 +626,11 @@ export class AudioManager extends Events {
 		}
 
 		const wasPaused = state.playState === PlayState.Paused;
+		if (!wasPaused) {
+			this.cancelConfiguredVolumeFade(id);
+			state.volume = state.def.volume;
+			this.applyVolume(id);
+		}
 		if (!wasPaused || !el.src) {
 			el.src = resourceUrl;
 			el.loop = this.getEffectiveLoop(id) && state.def.files.length === 1 && !this.hasRegion(state.def) && !this.regionOverrides.has(id);
@@ -637,6 +658,11 @@ export class AudioManager extends Events {
 			state.lastCause = buildCause(wasPaused ? "resume" : "play", cause);
 			if (this.hasRegion(state.def) || this.regionOverrides.has(id)) {
 				this.regionFadeMultipliers.set(id, this.computeRegionFade(id, state.def, el.currentTime));
+			}
+			if (wasPaused) {
+				this.resumeConfiguredVolumeFade(id);
+			} else {
+				this.startConfiguredVolumeFade(id);
 			}
 			if (useTrackFadeIn) {
 				this.fadeIn(id, state.def.fadeInDuration * 1000);
@@ -686,6 +712,7 @@ export class AudioManager extends Events {
 
 		const el = this.audioElements.get(id);
 		if (el) el.pause();
+		this.pauseConfiguredVolumeFade(id);
 
 		this.playFades.delete(id);
 		this.setFadingOut(id, false);
@@ -756,6 +783,7 @@ export class AudioManager extends Events {
 		if (!state) return;
 
 		this.fades.cancel(id);
+		this.cancelConfiguredVolumeFade(id);
 		this.setFadingOut(id, false);
 		this.setFadingIn(id, false);
 		this.fadeMultipliers.delete(id);
@@ -781,6 +809,7 @@ export class AudioManager extends Events {
 
 	stopAll(): void {
 		this.fades.cancelAll();
+		this.volumeFades.cancelAll();
 		this.fadeMultipliers.clear();
 		this.playFades.clear();
 		this.fadingOut.clear();
@@ -842,6 +871,8 @@ export class AudioManager extends Events {
 		const state = this.tracks.get(id);
 		if (!state) return;
 
+		// A manual slider move takes ownership of the track volume.
+		this.cancelConfiguredVolumeFade(id);
 		state.volume = Math.max(0, Math.min(1, volume));
 		this.applyVolume(id);
 		this.trigger(EVENT_TRACK_CHANGED, id);
@@ -889,6 +920,7 @@ export class AudioManager extends Events {
 
 	destroyAll(): void {
 		this.fades.destroy();
+		this.volumeFades.destroy();
 		this.fadeMultipliers.clear();
 		this.fadingOut.clear();
 		this.fadingIn.clear();
@@ -1003,6 +1035,7 @@ export class AudioManager extends Events {
 					this.trigger(EVENT_TRACK_CHANGED, id);
 				});
 			} else {
+				this.cancelConfiguredVolumeFade(id);
 				state.playState = PlayState.Stopped;
 				state.currentIndex = 0;
 				state.lastCause = buildCause("stop", {kind: "ended"});
@@ -1072,6 +1105,37 @@ export class AudioManager extends Events {
 			state.playState = PlayState.Stopped;
 		}
 		this.trigger(EVENT_TRACK_CHANGED, id);
+	}
+
+	private startConfiguredVolumeFade(id: string): void {
+		const state = this.tracks.get(id);
+		if (!state || state.def.volumeFadeTarget === null || state.def.volumeFadeDuration <= 0) return;
+
+		this.volumeFades.start(
+			id,
+			state.volume,
+			state.def.volumeFadeTarget,
+			state.def.volumeFadeDuration * 1000,
+			(value) => {
+				const currentState = this.tracks.get(id);
+				if (!currentState) return;
+				currentState.volume = value;
+				this.applyVolume(id);
+			},
+			() => this.trigger(EVENT_TRACK_CHANGED, id),
+		);
+	}
+
+	private resumeConfiguredVolumeFade(id: string): void {
+		this.volumeFades.resume(id);
+	}
+
+	private pauseConfiguredVolumeFade(id: string): void {
+		this.volumeFades.pause(id);
+	}
+
+	private cancelConfiguredVolumeFade(id: string): void {
+		this.volumeFades.cancel(id);
 	}
 
 	private fadeOutAndPause(id: string, duration: number, cause?: CauseInput): void {
