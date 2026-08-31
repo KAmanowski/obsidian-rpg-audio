@@ -32,9 +32,13 @@ export default class RpgAudioPlugin extends Plugin {
 		this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new RpgAudioSidebarView(leaf, this));
 
 		this.registerMarkdownCodeBlockProcessor("rpg-audio", (source, el, ctx) => {
-			const result = parseAudioBlockDetailed(source);
+			const result = parseAudioBlockDetailed(source, {
+				playlistCrossfadeDuration: this.settings.defaultPlaylistCrossfade,
+				volumeFadeTarget: this.settings.defaultVolumeFadeTarget,
+				volumeFadeDuration: this.settings.defaultVolumeFadeDuration,
+			});
 			const missingFiles = this.settings.validateAudioBlocks && result.def
-				? this.audioManager.getMissingAudioFiles(result.def.files)
+				? this.audioManager.getMissingAudioFiles(result.def.entries.map(entry => entry.path))
 				: [];
 			const errors = getAudioBlockErrors(result, missingFiles, this.settings.validateAudioBlocks);
 			if (!result.def || errors.length > 0) {

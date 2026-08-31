@@ -21,6 +21,12 @@ export interface RpgAudioSettings {
 	autoplayDelay: number;
 	crossfadeDuration: number;
 	playFadeDuration: number;
+	/** Default playlist crossfade applied to blocks that omit "crossfade", in seconds. Zero disables it. */
+	defaultPlaylistCrossfade: number;
+	/** Default volume fade target applied to blocks that omit "volume-fade-to", from 0 to 1. */
+	defaultVolumeFadeTarget: number;
+	/** Default volume fade duration applied to blocks that omit "volume-fade-duration", in seconds. Zero disables the fade. */
+	defaultVolumeFadeDuration: number;
 	showDebugInfo: boolean;
 	reverbPreset: string;
 	reverbWet: number;
@@ -39,6 +45,9 @@ export const DEFAULT_SETTINGS: RpgAudioSettings = {
 	autoplayDelay: 0,
 	crossfadeDuration: 2000,
 	playFadeDuration: 0,
+	defaultPlaylistCrossfade: 0,
+	defaultVolumeFadeTarget: 0.5,
+	defaultVolumeFadeDuration: 0,
 	showDebugInfo: false,
 	reverbPreset: "dry",
 	reverbWet: 0.35,
@@ -133,7 +142,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Audio folder")
-			.setDesc("Vault-relative folder where audio files are stored")
+			.setDesc("Folder path, relative to the vault root, checked for audio files whose block paths do not already resolve from the vault root, for example \"audio\" or \"assets/sound\".")
 			.addText(text => text
 				.setPlaceholder("Audio")
 				.setValue(this.plugin.settings.audioFolder)
@@ -145,7 +154,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Validate audio blocks")
-			.setDesc("Check settings and file paths before creating a player. Disable to use permissive parsing.")
+			.setDesc("When enabled, checks every setting and file path in a code block before creating a player, blocking the block with a red error panel if a problem is found. When disabled, only the structurally required identifier, name, and file settings are enforced.")
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.validateAudioBlocks)
 				.onChange(async (value) => {
@@ -155,7 +164,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Master volume")
-			.setDesc("Global volume multiplier for all tracks")
+			.setDesc("Global volume multiplier applied on top of every track's own volume, from 0 (silent) to 1 (full, unitless).")
 			.addSlider(slider => slider
 				.setLimits(0, 1, 0.01)
 				.setValue(this.plugin.settings.masterVolume)
@@ -168,7 +177,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Auto-open sidebar")
-			.setDesc("Automatically open the audio sidebar when the plugin loads")
+			.setDesc("Automatically open the audio sidebar panel in the right side dock when the plugin loads.")
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.autoOpenSidebar)
 				.onChange(async (value) => {
@@ -178,7 +187,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Autoplay delay")
-			.setDesc("Delay before an autoplay track starts. If the track unloads during the delay, for example when a hover popover is dismissed, playback is cancelled. Set to 0 for instant autoplay.")
+			.setDesc("Time to wait before an autoplay track starts, in milliseconds (0-2000ms). If the track unloads during the delay, for example when a hover popover is dismissed, playback is cancelled. Set to 0 for instant autoplay.")
 			.addSlider(slider => slider
 				.setLimits(0, 2000, 50)
 				.setValue(this.plugin.settings.autoplayDelay)
@@ -191,7 +200,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Crossfade duration")
-			.setDesc("Duration of crossfade between exclusive tracks. Set to 0 to disable.")
+			.setDesc("Duration of the crossfade between exclusive tracks, in milliseconds (0-5000ms), for example when a scope transition or directive stops one track while starting another. Set to 0 to disable crossfading and use hard stops.")
 			.addSlider(slider => slider
 				.setLimits(0, 5000, 100)
 				.setValue(this.plugin.settings.crossfadeDuration)
@@ -204,7 +213,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Play fade duration")
-			.setDesc("Fade in when starting or resuming a track and fade out when pausing. Set to 0 for instant transitions.")
+			.setDesc("Duration, in milliseconds (0-5000ms), of the fade applied when starting or resuming a track and the fade applied when pausing one. Set to 0 for instant transitions.")
 			.addSlider(slider => slider
 				.setLimits(0, 5000, 100)
 				.setValue(this.plugin.settings.playFadeDuration)
@@ -215,7 +224,48 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+		this.displayBlockDefaults(containerEl);
 		this.displayReverb(containerEl);
+	}
+
+	private displayBlockDefaults(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName("Code block defaults").setHeading();
+
+		new Setting(containerEl)
+			.setName("Default playlist crossfade")
+			.setDesc("Overlap between adjacent playlist items while fading into each other, in seconds (0-10s), used by rpg-audio blocks that omit their own \"crossfade\" setting. An explicit per-block \"crossfade\" always overrides this. Set to 0 to disable by default.")
+			.addSlider(slider => slider
+				.setLimits(0, 10, 0.5)
+				.setValue(this.plugin.settings.defaultPlaylistCrossfade)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.defaultPlaylistCrossfade = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Default volume fade target")
+			.setDesc("Target volume, from 0 (silent) to 1 (full, unitless), used by rpg-audio blocks that omit both \"volume-fade-to\" and \"volume-fade-duration\". An explicit per-block \"volume-fade-to\" always overrides this. Only takes effect when the default volume fade duration below is above 0.")
+			.addSlider(slider => slider
+				.setLimits(0, 1, 0.01)
+				.setValue(this.plugin.settings.defaultVolumeFadeTarget)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.defaultVolumeFadeTarget = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Default volume fade duration")
+			.setDesc("Duration of the volume fade, in seconds (0-120s), used by rpg-audio blocks that omit both \"volume-fade-to\" and \"volume-fade-duration\". An explicit per-block \"volume-fade-duration\" always overrides this. Set to 0 to disable the default volume fade.")
+			.addSlider(slider => slider
+				.setLimits(0, 120, 1)
+				.setValue(this.plugin.settings.defaultVolumeFadeDuration)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.defaultVolumeFadeDuration = value;
+					await this.plugin.saveSettings();
+				}));
 	}
 
 	private displayReverb(containerEl: HTMLElement): void {
@@ -223,7 +273,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Reverb space")
-			.setDesc("Acoustic space applied to all tracks")
+			.setDesc("Acoustic space (reverb preset) applied to every track's audio output. Select the no-reverb option at the top of the list to disable the effect entirely.")
 			.addDropdown(drop => {
 				drop.addOption(REVERB_OFF, "No reverb");
 				for (const p of getAllPresets()) drop.addOption(p.id, p.name);
@@ -239,7 +289,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Wet level")
-			.setDesc("How much reverb is mixed in — remembered separately for each space")
+			.setDesc("How much reverb is mixed into the dry signal, from 0 (no reverb audible) to 1 (fully wet, unitless). Remembered separately for each reverb space.")
 			.addSlider(slider => slider
 				.setLimits(0, 1, 0.01)
 				.setValue(this.getWetForPreset(this.plugin.settings.reverbPreset))
@@ -250,7 +300,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Safety limiter")
-			.setDesc("Catches peaks so loud material does not clip when reverb is added. Disable only if you hear pumping.")
+			.setDesc("When enabled, catches output peaks so loud material does not clip when reverb is added. Disable only if you hear pumping (audible volume ducking) on loud passages.")
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.reverbLimiter)
 				.onChange(async (value) => {
@@ -265,7 +315,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Editing")
-			.setDesc("Preset to modify. Editing a built-in creates a custom override you can reset.")
+			.setDesc("Reverb preset the sliders below edit. Editing a built-in preset creates a custom override (resettable); the new button duplicates the selected preset as a new custom preset.")
 			.addDropdown(drop => {
 				for (const p of getAllPresets()) drop.addOption(p.id, p.name);
 				drop.setValue(this.editingPresetId);
@@ -338,34 +388,34 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 					this.mutateEditedPreset(p => { p.name = value; });
 				}));
 
-		this.addPresetSlider(containerEl, "Decay", "Length of the reverb tail, in seconds",
+		this.addPresetSlider(containerEl, "Decay", "Length of the reverb tail, in seconds (0.1-8s). Longer values sound like a larger space.",
 			0.1, 8, 0.1, p => p.decaySecs, (p, v) => { p.decaySecs = v; });
 
-		this.addPresetSlider(containerEl, "Pre-delay", "Gap before the reverb starts, in milliseconds",
+		this.addPresetSlider(containerEl, "Pre-delay", "Gap before the reverb starts, in milliseconds (0-150ms). Longer values separate the dry sound from the reverb tail, suggesting a larger room.",
 			0, 150, 1, p => p.preDelayMs, (p, v) => { p.preDelayMs = v; });
 
-		this.addPresetSlider(containerEl, "Damping", "How quickly high frequencies fade from the tail",
+		this.addPresetSlider(containerEl, "Damping", "How quickly high frequencies fade from the reverb tail, from 0 (no extra damping) to 1 (heavily damped, unitless). Higher values sound darker and more absorbent.",
 			0, 1, 0.01, p => p.damping, (p, v) => { p.damping = v; });
 
-		this.addPresetSlider(containerEl, "Diffusion", "Stereo width of the tail. Lower values collapse toward mono.",
+		this.addPresetSlider(containerEl, "Diffusion", "Stereo width of the reverb tail, from 0 (collapsed toward mono) to 1 (fully wide, unitless).",
 			0, 1, 0.01, p => p.diffusion, (p, v) => { p.diffusion = v; });
 
-		this.addPresetSlider(containerEl, "Early reflections", "Number of distinct early echoes",
+		this.addPresetSlider(containerEl, "Early reflections", "Number of distinct early echoes simulated before the main tail (0-40, a count).",
 			0, 40, 1, p => p.earlyReflections, (p, v) => { p.earlyReflections = v; });
 
-		this.addPresetSlider(containerEl, "Early level", "Loudness of the early echoes relative to the tail",
+		this.addPresetSlider(containerEl, "Early level", "Loudness of the early echoes relative to the reverb tail, from 0 (silent) to 1 (as loud as the tail, unitless).",
 			0, 1, 0.01, p => p.earlyLevel, (p, v) => { p.earlyLevel = v; });
 
-		this.addPresetSlider(containerEl, "Early spread", "Window the early echoes land in, in milliseconds. Shorter sounds like a smaller room.",
+		this.addPresetSlider(containerEl, "Early spread", "Time window the early echoes land within, in milliseconds (5-200ms). Shorter values sound like a smaller room.",
 			5, 200, 1, p => p.erSpreadMs ?? 80, (p, v) => { p.erSpreadMs = v; });
 
-		this.addPresetSlider(containerEl, "Low cut", "Keeps bass out of the reverb, in hertz. Raise this if low end sounds muddy or distorted.",
+		this.addPresetSlider(containerEl, "Low cut", "High-pass filter cutoff that keeps bass out of the reverb, in hertz (20-800Hz). Raise this if the low end sounds muddy or distorted.",
 			20, 800, 10, p => p.hpfHz, (p, v) => { p.hpfHz = v; });
 
-		this.addPresetSlider(containerEl, "High cut", "Rolls off the top of the reverb, in hertz. Lower values sound darker and more distant.",
+		this.addPresetSlider(containerEl, "High cut", "Low-pass filter cutoff that rolls off the top of the reverb, in hertz (1000-16000Hz). Lower values sound darker and more distant.",
 			1000, 16000, 100, p => p.lpfHz, (p, v) => { p.lpfHz = v; });
 
-		this.addPresetSlider(containerEl, "Wet trim", "Output level for this preset, used to match it against the others",
+		this.addPresetSlider(containerEl, "Wet trim", "Output level multiplier for this preset's reverb signal, from 0 (silent) to 2 (double gain, unitless), used to match its loudness against other presets.",
 			0, 2, 0.01, p => p.wetTrim, (p, v) => { p.wetTrim = v; });
 	}
 }

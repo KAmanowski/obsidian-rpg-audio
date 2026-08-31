@@ -150,14 +150,42 @@ id: battle-music
 name: Battle Music
 type: playlist
 loop: true
+start: 0:15
+end: 3:00
+playlist-end-action: next
+crossfade: 3s
 files:
-- audio/music/battle-01.mp3
-- audio/music/battle-02.mp3
-- audio/music/battle-03.mp3
+- audio/music/battle-01.mp3 [Opening assault]
+- audio/music/battle-02.mp3 [Enemy reinforcements] {start=0:45, end=2:20}
+- audio/music/battle-03.mp3 [Last stand] {start=none, end=4:00}
 ```
 ````
 
-Add `random: true` to shuffle. Without `loop: true`, only one track plays and stops — paired with `random: true` this gives you a varied one-shot SFX (e.g. sword hits).
+Add `random: true` to shuffle. By default, `playlist-end-action: auto` preserves the original behavior: without `loop: true`, one item plays and stops; with loop enabled, playback advances and wraps. Use `playlist-end-action: next` to advance through the list even when loop is off, stopping after the last item.
+
+Set `crossfade` to the number of seconds that adjacent items should overlap, using either `crossfade: 3` or `crossfade: 3s`. The incoming item starts at its effective start boundary while the current item fades out and the incoming item fades in. Automatic crossfades occur only when the end action advances to another item; `repeat` and `stop` keep their literal behavior. Selecting another item while playback is active also uses the crossfade. If less time remains than configured, the overlap is shortened to the available time. Pausing or stopping during a crossfade safely ends the outgoing source.
+
+Inline players with more than one file include a collapsible playlist below the transport controls. Expand it to see every file in configured order, identify the current item, or select any available item to play it immediately. The list stays in configured order when `random: true`; unavailable files are identified when permissive validation allows the player to render.
+
+Add an optional display title after a playlist path using square brackets. The title appears in the playlist while playback and validation continue to use only the path. Entries without a title use their filename:
+
+```yaml
+files:
+- audio/music/battle-01.mp3 [Opening assault]
+- audio/music/battle-02.mp3 [Last stand]
+- audio/music/battle-03.mp3
+```
+
+Block-level `start` and `end` values are inherited by every playlist item. Add a trailing brace block to override either boundary for one file. Omitted options inherit the block value; `none` explicitly removes that boundary:
+
+```yaml
+start: 0:15
+end: 3:00
+files:
+- battle-01.mp3 [Uses both defaults]
+- battle-02.mp3 [Custom excerpt] {start=0:30, end=2:10}
+- battle-03.mp3 [Natural ending] {end=none}
+```
 
 ## Sidebar
 
@@ -173,30 +201,46 @@ Click the music note icon in the ribbon (or run the **Toggle audio sidebar** com
 
 ## Field reference
 
+### Common settings
+
 | Field   | Required | Description |
 |---------|----------|-------------|
 | `id`    | Yes      | Unique identifier for the track. Used internally to manage playback state. |
 | `name`  | Yes      | Display name shown in the player widget and sidebar. |
 | `type`  | No       | Label shown as a badge on the player (e.g. `sfx`, `ambience`, `playlist`). Defaults to `playlist` when multiple files are provided, `sfx` otherwise. |
 | `scope` | No       | Comma-separated context labels (e.g. `tavern` or `outdoors, district-1`). Playing a scoped track stops other-scope tracks. See [Scene transitions with scope](#scene-transitions-with-scope). |
-| `loop`  | No       | `true` or `false`. For single-file tracks, loops the file. For multi-file tracks, continues to the next track when one ends (sequentially or shuffled). When `false`, plays one track and stops. Defaults to `false`. |
-| `random` | No      | `true` or `false`. When enabled, picks a random track on play and (with `loop: true`) shuffles to a different track each time. Defaults to `false`. |
 | `autoplay` | No    | `true` or `false`. When enabled, the track starts playing as soon as it is rendered (e.g. when the note is opened or shown in a hover popover). Requires the sidebar autoplay toggle to be on. Defaults to `false`. |
 | `stops`     | No   | Comma-separated list of types or track IDs to stop when this track starts playing. Prefix a token with `!` to exclude. See [Advanced directives](#advanced-directives). |
 | `fadesout`  | No   | Comma-separated list of types or track IDs to fade out, then stop, when this track starts playing. Each target uses its own `fadeout` duration; targets without one stop immediately. Prefix a token with `!` to exclude. See [Advanced directives](#advanced-directives). |
 | `pauses`    | No   | Like `stops`, but paused tracks keep their position and can be resumed later. |
 | `resumes`   | No   | Comma-separated list of types or track IDs to resume when this track starts. Only affects tracks that are currently paused. |
-| `start` | No       | Timestamp (`m:ss` or seconds) where playback begins within the file. Combined with `end`, defines a default region that loops independently. Can be adjusted at runtime by dragging the seek bar handles. |
-| `end`   | No       | Timestamp (`m:ss` or seconds) where the region ends. Playback loops back to `start` when it reaches this point. |
 | `fadein` | No      | Seconds to fade in from silence when the track starts playing (or after `start`, when set). |
 | `fadeout` | No     | Seconds to fade out to silence before the track ends (or region end). A positive value also changes the secondary per-track **Stop** control to **Fade out** while playing. Select it to fade using this duration and stop at the end; during the fade it becomes **Stop**, which stops immediately if selected again. |
 | `volume` | No      | Initial volume from `0` (silent) to `1` (full) applied when the track starts. Defaults to `1`. Can still be adjusted afterwards with the player's volume slider. |
-| `volume-fade-to` | No | Target volume from `0` (silent) to `1` (full). Requires `volume-fade-duration`; invalid or incomplete volume-fade settings produce a configuration error. |
-| `volume-fade-duration` | No | Positive number of seconds for a smooth linear transition from `volume` to `volume-fade-to`. Requires `volume-fade-to`. Defaults to no volume fade. |
-| `file`  | \*       | Path to a single audio file, relative to the vault root (e.g. `audio/thunder.mp3`). |
-| `files` | \*       | A list of audio files (one per line, prefixed with `- `). Files play in order as a playlist. |
+| `volume-fade-to` | No | Target volume from `0` (silent) to `1` (full). Requires `volume-fade-duration`; invalid or incomplete volume-fade settings produce a configuration error. Omitting both `volume-fade-to` and `volume-fade-duration` inherits the plugin's **Default volume fade target** / **Default volume fade duration** settings. |
+| `volume-fade-duration` | No | Positive number of seconds for a smooth linear transition from `volume` to `volume-fade-to`. Requires `volume-fade-to`. Defaults to no volume fade, or to the plugin's default volume fade duration when both volume-fade fields are omitted. |
 
-\* At least one `file` or `files` entry is required.
+### Single-file settings
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `file` | Yes | Path to one audio file, relative to the vault root. An optional trailing `[Title]` is accepted for syntax consistency. |
+| `start` | No | Timestamp (`m:ss` or seconds) where playback begins. |
+| `end` | No | Timestamp where the effective region ends. |
+| `loop` | No | Repeats the effective region when true; otherwise playback stops at its end. Defaults to false. |
+
+### Playlist settings
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `files` | Yes | Audio entries in source order, one per line beginning with `- `. Each supports `path [Title] {start=…, end=…}`. |
+| `start` | No | Master start boundary inherited by every item unless overridden or cleared per file. |
+| `end` | No | Master end boundary inherited by every item unless overridden or cleared per file. |
+| `playlist-end-action` | No | `auto`, `next`, `repeat`, or `stop`. `auto` follows the existing loop-controlled behavior. `next` traverses all items and only wraps when loop is on. `repeat` restarts the current effective region. `stop` stops the playlist. Defaults to `auto`. |
+| `crossfade` | No | Seconds that adjacent playlist items overlap while fading into each other. Accepts a number such as `3` or a seconds suffix such as `3s`. Applies to automatic advancing transitions and direct item selection while playing. Defaults to `0` (instant changes), or to the plugin's **Default playlist crossfade** setting when omitted. |
+| `loop` | No | With `auto`, enables advancing and wrapping. With `next`, controls whether the last item wraps to the first. Defaults to false. Explicit `repeat` and `stop` actions take precedence. |
+| `random` | No | Picks a random initial item. Advancing actions choose other items randomly; `next` avoids repeats until the current cycle is exhausted. Defaults to false. |
+| Per-file `{start=…, end=…}` | No | Timestamp overrides for one item. Omit a key to inherit the master value or use `none` to remove that boundary. Runtime handle changes override configuration for the current item until stopped. |
 
 ### Configuration errors
 
@@ -266,6 +310,9 @@ Prefix a token with `!` to exclude it. Example: `stops: ambient, !crowd-ambient`
 - **Autoplay delay** — duration in milliseconds to wait before an autoplay track actually starts (default: 0ms / instant). If the track unloads during the delay — for example a hover popover is dismissed before the timer fires — playback is cancelled. Useful when moving the mouse around a map with many marker popovers that would otherwise blast audio on every flicker.
 - **Crossfade duration** — duration in milliseconds of the crossfade between exclusive tracks (default: 2000ms). Set to 0 to disable crossfading and use hard stops.
 - **Play fade duration** — duration in milliseconds of the fade applied when starting, pausing, and resuming a track (default: 0ms / instant). Clicking play during a fade-out reverses into a fade-in (and vice versa).
+- **Default playlist crossfade** — seconds of overlap used by playlist blocks that omit `crossfade` (default: 0s / disabled). An explicit per-block `crossfade` always overrides this.
+- **Default volume fade target** — target volume from `0` to `1` used by blocks that omit `volume-fade-to` (default: `0.5`). Only takes effect when the default volume fade duration is above 0. An explicit per-block `volume-fade-to` always overrides this.
+- **Default volume fade duration** — seconds used by blocks that omit `volume-fade-duration` (default: 0s / disabled). An explicit per-block `volume-fade-duration` always overrides this.
 
 ## Commands
 

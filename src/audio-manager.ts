@@ -20,9 +20,17 @@ import {
 import { FadeEngine } from "./fade-engine";
 import { VolumeFadeController } from "./volume-fade-controller";
 import { findAudioFile } from "./audio-file-resolver";
+import { isValidPlaylistIndex, resolveConfiguredRegion } from "./playlist-utils";
 import { ReverbBus, REVERB_OFF, getPreset } from "./reverb-engine";
 
 type CauseInput = {kind: TrackCauseKind; detail?: string};
+
+interface TrackAudioGraph {
+	el: HTMLAudioElement;
+	gain: GainNode;
+	dry: GainNode;
+	send: GainNode;
+}
 
 function buildCause(action: TrackAction, input: CauseInput | undefined): TrackCause {
 	return {
@@ -82,8 +90,15 @@ export class AudioManager extends Events {
 	private _activeScope: Set<string> = new Set();
 	private regionFadeMultipliers: Map<string, number> = new Map();
 	private regionFadeInDone: Set<string> = new Set();
-	private regionOverrides: Map<string, {startTime: number | null; endTime: number | null}> = new Map();
+	private regionOverrides: Map<string, Map<number, {startTime: number | null; endTime: number | null}>> = new Map();
 	private loopOverrides: Map<string, boolean> = new Map();
+	private playlistVisited: Map<string, Set<number>> = new Map();
+	private playlistCrossfading: Set<string> = new Set();
+	private playlistCrossfadeFailed: Set<string> = new Set();
+	private playlistCrossfadeMultipliers: Map<string, number> = new Map();
+	private outgoingPlaylistGraphs: Map<string, TrackAudioGraph> = new Map();
+	/** Invalidates stale async media-source changes after stop or a newer selection. */
+	private sourceRequestVersions: Map<string, number> = new Map();
 
 	constructor(app: App) {
 		super();
@@ -160,15 +175,12 @@ export class AudioManager extends Events {
 		this.trigger(EVENT_REVERB_PRESETS_CHANGED);
 	}
 
-	private getOrCreateGainNode(id: string, el: HTMLAudioElement): GainNode {
-		let gain = this.gainNodes.get(id);
-		if (gain) return gain;
-
+	private createAudioGraph(id: string, el: HTMLAudioElement): TrackAudioGraph {
 		const ctx = this.ensureAudioContext();
 		const master = this.ensureMasterBus();
 		const bus = this.ensureReverbBus();
 		const source = ctx.createMediaElementSource(el);
-		gain = ctx.createGain();
+		const gain = ctx.createGain();
 		source.connect(gain);
 
 		// Dry path — gain computed by applyReverbMix.
@@ -181,11 +193,40 @@ export class AudioManager extends Events {
 		gain.connect(send);
 		send.connect(bus.input);
 
-		this.gainNodes.set(id, gain);
-		this.dryNodes.set(id, dry);
-		this.sendNodes.set(id, send);
-		this.applyReverbMix(id);
-		return gain;
+		this.applyReverbMixToNodes(id, dry, send);
+		return {el, gain, dry, send};
+	}
+
+	private installAudioGraph(id: string, graph: TrackAudioGraph): void {
+		this.audioElements.set(id, graph.el);
+		this.gainNodes.set(id, graph.gain);
+		this.dryNodes.set(id, graph.dry);
+		this.sendNodes.set(id, graph.send);
+	}
+
+	private getInstalledAudioGraph(id: string): TrackAudioGraph | null {
+		const el = this.audioElements.get(id);
+		const gain = this.gainNodes.get(id);
+		const dry = this.dryNodes.get(id);
+		const send = this.sendNodes.get(id);
+		return el && gain && dry && send ? {el, gain, dry, send} : null;
+	}
+
+	private disposeAudioGraph(graph: TrackAudioGraph): void {
+		graph.el.pause();
+		graph.el.removeAttribute("src");
+		graph.el.load();
+		graph.gain.disconnect();
+		graph.dry.disconnect();
+		graph.send.disconnect();
+	}
+
+	private getOrCreateGainNode(id: string, el: HTMLAudioElement): GainNode {
+		const existing = this.gainNodes.get(id);
+		if (existing) return existing;
+		const graph = this.createAudioGraph(id, el);
+		this.installAudioGraph(id, graph);
+		return graph.gain;
 	}
 
 	set audioFolder(value: string) {
@@ -273,6 +314,10 @@ export class AudioManager extends Events {
 		const dry = this.dryNodes.get(id);
 		const send = this.sendNodes.get(id);
 		if (!dry || !send) return;
+		this.applyReverbMixToNodes(id, dry, send);
+	}
+
+	private applyReverbMixToNodes(id: string, dry: GainNode, send: GainNode): void {
 
 		if (this._reverbPreset === REVERB_OFF || this._reverbBypassed) {
 			dry.gain.value = 1;
@@ -313,6 +358,32 @@ export class AudioManager extends Events {
 	getDuration(id: string): number {
 		const el = this.audioElements.get(id);
 		return el && isFinite(el.duration) ? el.duration : 0;
+	}
+
+	private beginSourceRequest(id: string): number {
+		const version = (this.sourceRequestVersions.get(id) ?? 0) + 1;
+		this.sourceRequestVersions.set(id, version);
+		return version;
+	}
+
+	private isCurrentSourceRequest(id: string, version: number): boolean {
+		return this.sourceRequestVersions.get(id) === version;
+	}
+
+	private invalidateSourceRequest(id: string): void {
+		this.sourceRequestVersions.set(id, (this.sourceRequestVersions.get(id) ?? 0) + 1);
+	}
+
+	private cancelPlaylistCrossfade(id: string): void {
+		this.fades.cancel(`${id}:playlist-in`);
+		this.fades.cancel(`${id}:playlist-out`);
+		const outgoing = this.outgoingPlaylistGraphs.get(id);
+		if (outgoing) this.disposeAudioGraph(outgoing);
+		this.outgoingPlaylistGraphs.delete(id);
+		this.playlistCrossfading.delete(id);
+		this.playlistCrossfadeFailed.delete(id);
+		this.playlistCrossfadeMultipliers.delete(id);
+		this.applyVolume(id);
 	}
 
 	getMissingAudioFiles(paths: string[]): string[] {
@@ -376,17 +447,30 @@ export class AudioManager extends Events {
 	}
 
 	getEffectiveRegion(id: string): {startTime: number | null; endTime: number | null} {
-		const override = this.regionOverrides.get(id);
-		if (override) return override;
 		const state = this.tracks.get(id);
 		if (!state) return {startTime: null, endTime: null};
-		return {startTime: state.def.startTime, endTime: state.def.endTime};
+		return this.getEffectiveRegionForIndex(id, state.currentIndex);
+	}
+
+	private getEffectiveRegionForIndex(id: string, index: number): {startTime: number | null; endTime: number | null} {
+		const state = this.tracks.get(id);
+		if (!state) return {startTime: null, endTime: null};
+		const override = this.regionOverrides.get(id)?.get(index);
+		if (override) return override;
+		const entry = state.def.entries[index];
+		return resolveConfiguredRegion(entry, state.def.startTime, state.def.endTime);
 	}
 
 	setEffectiveRegion(id: string, startTime: number | null, endTime: number | null): void {
-		this.regionOverrides.set(id, {startTime, endTime});
 		const el = this.audioElements.get(id);
 		const state = this.tracks.get(id);
+		if (!state) return;
+		let overrides = this.regionOverrides.get(id);
+		if (!overrides) {
+			overrides = new Map();
+			this.regionOverrides.set(id, overrides);
+		}
+		overrides.set(state.currentIndex, {startTime, endTime});
 		if (el && state && state.playState === PlayState.Playing) {
 			const lo = startTime ?? 0;
 			const hi = endTime ?? (isFinite(el.duration) ? el.duration : Infinity);
@@ -397,7 +481,11 @@ export class AudioManager extends Events {
 	}
 
 	clearRegionOverride(id: string): void {
-		this.regionOverrides.delete(id);
+		const state = this.tracks.get(id);
+		if (!state) return;
+		const overrides = this.regionOverrides.get(id);
+		overrides?.delete(state.currentIndex);
+		if (overrides?.size === 0) this.regionOverrides.delete(id);
 	}
 
 	getEffectiveLoop(id: string): boolean {
@@ -410,8 +498,9 @@ export class AudioManager extends Events {
 		const el = this.audioElements.get(id);
 		const state = this.tracks.get(id);
 		if (el && state) {
-			const hasReg = this.hasRegion(state.def) || this.regionOverrides.has(id);
-			el.loop = value && state.def.files.length === 1 && !hasReg;
+			const region = this.getEffectiveRegion(id);
+			const hasRegion = region.startTime !== null || region.endTime !== null;
+			el.loop = value && state.def.entries.length === 1 && !hasRegion;
 		}
 		this.trigger(EVENT_TRACK_CHANGED, id);
 	}
@@ -480,6 +569,8 @@ export class AudioManager extends Events {
 			playState: PlayState.Stopped,
 			volume: def.volume,
 			currentIndex: 0,
+			loadingIndex: null,
+			errorIndex: null,
 			error: null,
 			lastCause: null,
 		});
@@ -492,6 +583,7 @@ export class AudioManager extends Events {
 		if (this.unregistering.has(id)) return;
 		this.unregistering.add(id);
 		try {
+			this.cancelPlaylistCrossfade(id);
 			this.cancelConfiguredVolumeFade(id);
 			this.fades.cancel(id);
 			this.setFadingOut(id, false);
@@ -500,6 +592,7 @@ export class AudioManager extends Events {
 			this.regionFadeMultipliers.delete(id);
 			this.regionFadeInDone.delete(id);
 			this.regionOverrides.delete(id);
+			this.playlistVisited.delete(id);
 			this.loopOverrides.delete(id);
 			this.playFades.delete(id);
 			this.trackSends.delete(id);
@@ -521,13 +614,14 @@ export class AudioManager extends Events {
 			const send = this.sendNodes.get(id);
 			if (send) { send.disconnect(); this.sendNodes.delete(id); }
 			this.tracks.delete(id);
+			this.sourceRequestVersions.delete(id);
 			this.trigger(EVENT_TRACKS_UPDATED);
 		} finally {
 			this.unregistering.delete(id);
 		}
 	}
 
-	async play(id: string, skipPlayFadeIn = false, cause?: CauseInput): Promise<void> {
+	async play(id: string, skipPlayFadeIn = false, cause?: CauseInput, requestedIndex?: number): Promise<void> {
 		const state = this.tracks.get(id);
 		if (!state) return;
 
@@ -606,17 +700,21 @@ export class AudioManager extends Events {
 		const useCrossfadeIn = crossfading;
 		const usePlayFadeIn = !crossfading && !skipPlayFadeIn && this._playFadeDuration > 0;
 
-		if (state.def.random && state.def.files.length > 1 && state.playState !== PlayState.Paused) {
-			state.currentIndex = Math.floor(Math.random() * state.def.files.length);
+		if (requestedIndex !== undefined && isValidPlaylistIndex(requestedIndex, state.def.entries.length)) {
+			state.currentIndex = requestedIndex;
+		} else if (state.def.random && state.def.entries.length > 1 && state.playState !== PlayState.Paused) {
+			state.currentIndex = Math.floor(Math.random() * state.def.entries.length);
 		}
 
 		const fileIndex = state.currentIndex;
-		const filePath = state.def.files[fileIndex];
+		const filePath = state.def.entries[fileIndex]?.path;
 		if (!filePath) return;
 
 		const resourceUrl = this.resolveFile(filePath);
 		if (!resourceUrl) {
 			state.error = `File not found: ${filePath}`;
+			state.errorIndex = fileIndex;
+			state.loadingIndex = null;
 			state.playState = PlayState.Stopped;
 			this.trigger(EVENT_TRACK_CHANGED, id);
 			return;
@@ -631,19 +729,28 @@ export class AudioManager extends Events {
 		}
 
 		const wasPaused = state.playState === PlayState.Paused;
+		const sourceRequest = this.beginSourceRequest(id);
+		if (!wasPaused) {
+			this.playlistVisited.set(id, new Set([fileIndex]));
+			state.loadingIndex = fileIndex;
+			state.error = null;
+			state.errorIndex = null;
+			this.trigger(EVENT_TRACK_CHANGED, id);
+		}
 		if (!wasPaused) {
 			this.cancelConfiguredVolumeFade(id);
 			state.volume = state.def.volume;
 			this.applyVolume(id);
 		}
+		const region = this.getEffectiveRegion(id);
 		if (!wasPaused || !el.src) {
 			el.src = resourceUrl;
-			el.loop = this.getEffectiveLoop(id) && state.def.files.length === 1 && !this.hasRegion(state.def) && !this.regionOverrides.has(id);
+			const hasRegion = region.startTime !== null || region.endTime !== null;
+			el.loop = this.getEffectiveLoop(id) && state.def.entries.length === 1 && !hasRegion;
 		}
 
 		// Chromium silently ignores currentTime changes before HAVE_METADATA, so
 		// wait for loadedmetadata before seeking to the region start.
-		const region = this.getEffectiveRegion(id);
 		// A per-track fade-in without a start marker applies when playback starts.
 		// Region fade-ins are calculated from the playhead in computeRegionFade instead.
 		const useTrackFadeIn = !wasPaused && region.startTime === null && state.def.fadeInDuration > 0;
@@ -654,14 +761,26 @@ export class AudioManager extends Events {
 					el.addEventListener("error", () => resolve(), {once: true});
 				});
 			}
+			if (!this.isCurrentSourceRequest(id, sourceRequest)) return;
+			if (isFinite(el.duration) && region.startTime >= el.duration) {
+				state.error = `Playback failed: ${filePath} (region start is beyond the file duration)`;
+				state.errorIndex = fileIndex;
+				state.loadingIndex = null;
+				state.playState = PlayState.Stopped;
+				this.trigger(EVENT_TRACK_CHANGED, id);
+				return;
+			}
 			el.currentTime = region.startTime;
 		}
 		try {
 			await el.play();
+			if (!this.isCurrentSourceRequest(id, sourceRequest)) return;
 			state.playState = PlayState.Playing;
+			state.loadingIndex = null;
 			state.error = null;
+			state.errorIndex = null;
 			state.lastCause = buildCause(wasPaused ? "resume" : "play", cause);
-			if (this.hasRegion(state.def) || this.regionOverrides.has(id)) {
+			if (region.startTime !== null || region.endTime !== null) {
 				this.regionFadeMultipliers.set(id, this.computeRegionFade(id, state.def, el.currentTime));
 			}
 			if (wasPaused) {
@@ -681,9 +800,130 @@ export class AudioManager extends Events {
 				this.applyVolume(id);
 			}
 		} catch (e) {
+			if (!this.isCurrentSourceRequest(id, sourceRequest)) return;
 			console.error(`RPG Audio: failed to play track "${id}"`, e);
 			state.error = `Playback failed: ${filePath}`;
+			state.errorIndex = fileIndex;
+			state.loadingIndex = null;
 			state.playState = PlayState.Stopped;
+		}
+		this.trigger(EVENT_TRACK_CHANGED, id);
+	}
+
+	/** Select and immediately play a configured playlist item. */
+	async selectPlaylistIndex(id: string, index: number): Promise<void> {
+		const state = this.tracks.get(id);
+		if (!state || !isValidPlaylistIndex(index, state.def.entries.length)) return;
+		// Ignore repeated activation while a source change is already pending.
+		if (state.loadingIndex !== null) return;
+
+		const filePath = state.def.entries[index]?.path;
+		if (!filePath) return;
+		const resourceUrl = this.resolveFile(filePath);
+		if (!resourceUrl) {
+			state.error = `File not found: ${filePath}`;
+			state.errorIndex = index;
+			state.loadingIndex = null;
+			this.trigger(EVENT_TRACK_CHANGED, id);
+			return;
+		}
+
+		if (state.playState === PlayState.Stopped) {
+			state.currentIndex = index;
+			state.loadingIndex = index;
+			state.error = null;
+			state.errorIndex = null;
+			this.trigger(EVENT_TRACK_CHANGED, id);
+			await this.play(id, false, {kind: "user", detail: `playlist item ${index + 1}`}, index);
+			return;
+		}
+
+		if (state.playState === PlayState.Playing && state.def.playlistCrossfadeDuration > 0) {
+			if (this.playlistCrossfading.has(id)) this.cancelPlaylistCrossfade(id);
+			this.fades.cancel(id);
+			this.playFades.delete(id);
+			this.setFadingOut(id, false);
+			this.setFadingIn(id, false);
+			this.fadeMultipliers.delete(id);
+			this.applyVolume(id);
+			await this.startPlaylistCrossfade(id, index, {
+				kind: "user",
+				detail: `playlist item ${index + 1}`,
+			});
+			return;
+		}
+
+		const el = this.audioElements.get(id);
+		if (!el) {
+			state.playState = PlayState.Stopped;
+			await this.play(id, false, {kind: "user", detail: `playlist item ${index + 1}`}, index);
+			return;
+		}
+
+		const wasPaused = state.playState === PlayState.Paused;
+		this.fades.cancel(id);
+		this.playFades.delete(id);
+		this.setFadingOut(id, false);
+		this.setFadingIn(id, false);
+		this.fadeMultipliers.delete(id);
+		this.regionFadeMultipliers.delete(id);
+		this.regionFadeInDone.delete(id);
+		this.applyVolume(id);
+
+		state.currentIndex = index;
+		let visited = this.playlistVisited.get(id);
+		if (!visited) {
+			visited = new Set();
+			this.playlistVisited.set(id, visited);
+		}
+		visited.add(index);
+		state.loadingIndex = index;
+		state.error = null;
+		state.errorIndex = null;
+		this.trigger(EVENT_TRACK_CHANGED, id);
+
+		const sourceRequest = this.beginSourceRequest(id);
+		el.src = resourceUrl;
+		el.loop = false;
+		try {
+			const region = this.getEffectiveRegion(id);
+			if (region.startTime !== null) {
+				if (el.readyState < HTMLMediaElement.HAVE_METADATA) {
+					await new Promise<void>((resolve) => {
+						el.addEventListener("loadedmetadata", () => resolve(), {once: true});
+						el.addEventListener("error", () => resolve(), {once: true});
+					});
+				}
+				if (!this.isCurrentSourceRequest(id, sourceRequest)) return;
+				if (isFinite(el.duration) && region.startTime >= el.duration) {
+					throw new Error("Region start is beyond the file duration");
+				}
+				el.currentTime = region.startTime;
+			}
+			if (region.startTime !== null || region.endTime !== null) {
+				this.regionFadeMultipliers.set(id, this.computeRegionFade(id, state.def, el.currentTime));
+			}
+			this.applyVolume(id);
+			await el.play();
+			if (!this.isCurrentSourceRequest(id, sourceRequest)) return;
+			state.playState = PlayState.Playing;
+			state.loadingIndex = null;
+			state.error = null;
+			state.errorIndex = null;
+			state.lastCause = buildCause(wasPaused ? "resume" : "play", {
+				kind: "user",
+				detail: `playlist item ${index + 1}`,
+			});
+			if (wasPaused) this.resumeConfiguredVolumeFade(id);
+			this.applyVolume(id);
+		} catch (e) {
+			if (!this.isCurrentSourceRequest(id, sourceRequest)) return;
+			console.error(`RPG Audio: failed to play playlist item "${filePath}"`, e);
+			this.cancelConfiguredVolumeFade(id);
+			state.playState = PlayState.Stopped;
+			state.loadingIndex = null;
+			state.error = `Playback failed: ${filePath}`;
+			state.errorIndex = index;
 		}
 		this.trigger(EVENT_TRACK_CHANGED, id);
 	}
@@ -715,6 +955,7 @@ export class AudioManager extends Events {
 		const state = this.tracks.get(id);
 		if (!state) return;
 
+		this.cancelPlaylistCrossfade(id);
 		const el = this.audioElements.get(id);
 		if (el) el.pause();
 		this.pauseConfiguredVolumeFade(id);
@@ -787,6 +1028,8 @@ export class AudioManager extends Events {
 		const state = this.tracks.get(id);
 		if (!state) return;
 
+		this.invalidateSourceRequest(id);
+		this.cancelPlaylistCrossfade(id);
 		this.fades.cancel(id);
 		this.cancelConfiguredVolumeFade(id);
 		this.setFadingOut(id, false);
@@ -795,6 +1038,7 @@ export class AudioManager extends Events {
 		this.regionFadeMultipliers.delete(id);
 		this.regionFadeInDone.delete(id);
 		this.regionOverrides.delete(id);
+		this.playlistVisited.delete(id);
 		this.loopOverrides.delete(id);
 		this.playFades.delete(id);
 
@@ -806,6 +1050,8 @@ export class AudioManager extends Events {
 
 		state.playState = PlayState.Stopped;
 		state.currentIndex = 0;
+		state.loadingIndex = null;
+		state.errorIndex = null;
 		state.error = null;
 		state.lastCause = buildCause("stop", cause);
 		this.trigger(EVENT_TRACK_CHANGED, id);
@@ -932,7 +1178,14 @@ export class AudioManager extends Events {
 		this.regionFadeMultipliers.clear();
 		this.regionFadeInDone.clear();
 		this.regionOverrides.clear();
+		this.playlistVisited.clear();
+		for (const graph of this.outgoingPlaylistGraphs.values()) this.disposeAudioGraph(graph);
+		this.outgoingPlaylistGraphs.clear();
+		this.playlistCrossfading.clear();
+		this.playlistCrossfadeFailed.clear();
+		this.playlistCrossfadeMultipliers.clear();
 		this.loopOverrides.clear();
+		this.sourceRequestVersions.clear();
 		this.playFades.clear();
 		this.trackSends.clear();
 		this.unregistering.clear();
@@ -972,10 +1225,6 @@ export class AudioManager extends Events {
 		this.tracks.clear();
 	}
 
-	private hasRegion(def: AudioTrackDef): boolean {
-		return def.files.length === 1 && (def.startTime !== null || def.endTime !== null);
-	}
-
 	private computeRegionFade(id: string, def: AudioTrackDef, currentTime: number): number {
 		const region = this.getEffectiveRegion(id);
 		const startTime = region.startTime;
@@ -1008,48 +1257,256 @@ export class AudioManager extends Events {
 		const state = this.tracks.get(id);
 		const gain = this.gainNodes.get(id);
 		if (!state || !gain) return;
-		gain.gain.value = state.volume * this._masterVolume * (this.fadeMultipliers.get(id) ?? 1) * (this.regionFadeMultipliers.get(id) ?? 1);
+		gain.gain.value = state.volume * this._masterVolume
+			* (this.fadeMultipliers.get(id) ?? 1)
+			* (this.regionFadeMultipliers.get(id) ?? 1)
+			* (this.playlistCrossfadeMultipliers.get(id) ?? 1);
+	}
+
+	private getNextPlaylistIndex(id: string, completeCycle: boolean): number | null {
+		const state = this.tracks.get(id);
+		if (!state || state.def.entries.length < 2) return null;
+		const length = state.def.entries.length;
+		let nextIndex: number | null = null;
+
+		if (state.def.random) {
+			let visited = this.playlistVisited.get(id);
+			if (!visited) {
+				visited = new Set([state.currentIndex]);
+				this.playlistVisited.set(id, visited);
+			}
+			let candidates = Array.from({length}, (_, index) => index)
+				.filter(index => index !== state.currentIndex && (!completeCycle || !visited.has(index)));
+			if (candidates.length === 0 && completeCycle && this.getEffectiveLoop(id)) {
+				visited.clear();
+				visited.add(state.currentIndex);
+				candidates = Array.from({length}, (_, index) => index).filter(index => index !== state.currentIndex);
+			}
+			if (candidates.length > 0) {
+				nextIndex = candidates[Math.floor(Math.random() * candidates.length)] ?? null;
+			}
+		} else if (state.currentIndex + 1 < length) {
+			nextIndex = state.currentIndex + 1;
+		} else if (this.getEffectiveLoop(id)) {
+			nextIndex = 0;
+		}
+
+		return nextIndex;
+	}
+
+	private commitPlaylistIndex(id: string, nextIndex: number): void {
+		const state = this.tracks.get(id);
+		if (!state) return;
+		state.currentIndex = nextIndex;
+		let visited = this.playlistVisited.get(id);
+		if (!visited) {
+			visited = new Set();
+			this.playlistVisited.set(id, visited);
+		}
+		visited.add(nextIndex);
+		this.regionFadeInDone.delete(id);
+		this.regionFadeMultipliers.delete(id);
+	}
+
+	private advancePlaylist(id: string, completeCycle: boolean): boolean {
+		const state = this.tracks.get(id);
+		if (!state) return false;
+		const nextIndex = this.getNextPlaylistIndex(id, completeCycle);
+		if (nextIndex === null) return false;
+		if (state.def.playlistCrossfadeDuration > 0 && state.playState === PlayState.Playing
+			&& !this.playlistCrossfadeFailed.has(id)) {
+			void this.startPlaylistCrossfade(id, nextIndex);
+			return true;
+		}
+		this.playlistCrossfadeFailed.delete(id);
+		this.commitPlaylistIndex(id, nextIndex);
+		void this.playCurrentIndex(id);
+		return true;
+	}
+
+	private async startPlaylistCrossfade(id: string, nextIndex: number, cause?: CauseInput): Promise<boolean> {
+		const state = this.tracks.get(id);
+		const outgoing = this.getInstalledAudioGraph(id);
+		if (!state || !outgoing || this.playlistCrossfading.has(id)) return false;
+		const outgoingRegion = this.getEffectiveRegionForIndex(id, state.currentIndex);
+		const entry = state.def.entries[nextIndex];
+		if (!entry) return false;
+		const resourceUrl = this.resolveFile(entry.path);
+		if (!resourceUrl) {
+			state.error = `File not found: ${entry.path}`;
+			state.errorIndex = nextIndex;
+			this.playlistCrossfadeFailed.add(id);
+			this.trigger(EVENT_TRACK_CHANGED, id);
+			return false;
+		}
+
+		this.cancelPlaylistCrossfade(id);
+		this.playlistCrossfading.add(id);
+		state.loadingIndex = nextIndex;
+		state.error = null;
+		state.errorIndex = null;
+		this.trigger(EVENT_TRACK_CHANGED, id);
+		const sourceRequest = this.beginSourceRequest(id);
+		const incomingEl = new Audio();
+		const incoming = this.createAudioGraph(id, incomingEl);
+		incoming.gain.gain.value = 0;
+		incomingEl.src = resourceUrl;
+		incomingEl.loop = false;
+
+		try {
+			const region = this.getEffectiveRegionForIndex(id, nextIndex);
+			if (region.startTime !== null) {
+				if (incomingEl.readyState < HTMLMediaElement.HAVE_METADATA) {
+					await new Promise<void>((resolve) => {
+						incomingEl.addEventListener("loadedmetadata", () => resolve(), {once: true});
+						incomingEl.addEventListener("error", () => resolve(), {once: true});
+					});
+				}
+				if (!this.isCurrentSourceRequest(id, sourceRequest)) {
+					this.disposeAudioGraph(incoming);
+					return false;
+				}
+				if (isFinite(incomingEl.duration) && region.startTime >= incomingEl.duration) {
+					throw new Error("Region start is beyond the file duration");
+				}
+				incomingEl.currentTime = region.startTime;
+			}
+			await incomingEl.play();
+			if (!this.isCurrentSourceRequest(id, sourceRequest)) {
+				this.disposeAudioGraph(incoming);
+				return false;
+			}
+
+			this.installAudioGraph(id, incoming);
+			this.setupAudioElement(id, incomingEl);
+			this.outgoingPlaylistGraphs.set(id, outgoing);
+			this.commitPlaylistIndex(id, nextIndex);
+			this.playlistCrossfadeFailed.delete(id);
+			state.loadingIndex = null;
+			state.error = null;
+			state.errorIndex = null;
+			state.playState = PlayState.Playing;
+			if (cause) state.lastCause = buildCause("play", cause);
+			if (region.startTime !== null || region.endTime !== null) {
+				this.regionFadeMultipliers.set(id, this.computeRegionFade(id, state.def, incomingEl.currentTime));
+			}
+			this.playlistCrossfadeMultipliers.set(id, 0);
+			this.applyVolume(id);
+			this.trigger(EVENT_TRACK_CHANGED, id);
+
+			const configuredSeconds = state.def.playlistCrossfadeDuration;
+			const outgoingNaturalEnd = isFinite(outgoing.el.duration) ? outgoing.el.duration : Infinity;
+			const outgoingEnd = outgoingRegion.endTime === null
+				? outgoingNaturalEnd
+				: Math.min(outgoingRegion.endTime, outgoingNaturalEnd);
+			const remainingSeconds = Math.max(0, outgoingEnd - outgoing.el.currentTime);
+			const durationMs = Math.min(configuredSeconds, remainingSeconds) * 1000;
+			if (durationMs <= 0) {
+				this.disposeAudioGraph(outgoing);
+				this.outgoingPlaylistGraphs.delete(id);
+				this.playlistCrossfadeMultipliers.delete(id);
+				this.playlistCrossfading.delete(id);
+				this.applyVolume(id);
+				return true;
+			}
+
+			const outgoingGain = outgoing.gain.gain.value;
+			void this.fades.start(`${id}:playlist-in`, 0, 1, durationMs, (value) => {
+				this.playlistCrossfadeMultipliers.set(id, value);
+				this.applyVolume(id);
+			}).then((completed) => {
+				if (!completed) return;
+				this.playlistCrossfadeMultipliers.delete(id);
+				this.applyVolume(id);
+			});
+			void this.fades.start(`${id}:playlist-out`, 1, 0, durationMs, (value) => {
+				outgoing.gain.gain.value = outgoingGain * value;
+			}).then((completed) => {
+				if (!completed || this.outgoingPlaylistGraphs.get(id) !== outgoing) return;
+				this.disposeAudioGraph(outgoing);
+				this.outgoingPlaylistGraphs.delete(id);
+				this.playlistCrossfading.delete(id);
+				const current = this.audioElements.get(id);
+				const currentRegion = this.getEffectiveRegion(id);
+				if (current?.ended || (currentRegion.endTime !== null && current && current.currentTime >= currentRegion.endTime)) {
+					this.handleItemCompletion(id);
+				}
+			});
+			return true;
+		} catch (e) {
+			this.disposeAudioGraph(incoming);
+			if (!this.isCurrentSourceRequest(id, sourceRequest)) return false;
+			console.error(`RPG Audio: failed to crossfade to playlist item "${entry.path}"`, e);
+			this.playlistCrossfading.delete(id);
+			this.playlistCrossfadeFailed.add(id);
+			state.loadingIndex = null;
+			state.error = `Playback failed: ${entry.path}`;
+			state.errorIndex = nextIndex;
+			this.trigger(EVENT_TRACK_CHANGED, id);
+			return false;
+		}
+	}
+
+	private restartCurrentRegion(id: string): void {
+		const state = this.tracks.get(id);
+		const el = this.audioElements.get(id);
+		if (!state || !el) return;
+		const region = this.getEffectiveRegion(id);
+		const loopTo = region.startTime ?? 0;
+		this.regionFadeInDone.delete(id);
+		el.currentTime = loopTo;
+		if (region.startTime !== null || region.endTime !== null) {
+			this.regionFadeMultipliers.set(id, this.computeRegionFade(id, state.def, loopTo));
+		} else {
+			this.regionFadeMultipliers.delete(id);
+		}
+		this.applyVolume(id);
+		void el.play().catch((e) => {
+			console.error(`RPG Audio: failed to repeat playlist item for "${id}"`, e);
+			state.error = `Playback failed: ${state.def.entries[state.currentIndex]?.path ?? id}`;
+			state.errorIndex = state.currentIndex;
+			state.playState = PlayState.Stopped;
+			this.trigger(EVENT_TRACK_CHANGED, id);
+		});
+	}
+
+	private handleItemCompletion(id: string): void {
+		const state = this.tracks.get(id);
+		if (!state) return;
+		if (this.playlistCrossfading.has(id)) return;
+		if (state.def.entries.length === 1) {
+			if (this.getEffectiveLoop(id)) this.restartCurrentRegion(id);
+			else this.stop(id, {kind: "ended"});
+			return;
+		}
+
+		switch (state.def.playlistEndAction) {
+			case "next":
+				if (!this.advancePlaylist(id, true)) this.stop(id, {kind: "ended"});
+				break;
+			case "repeat":
+				this.restartCurrentRegion(id);
+				break;
+			case "stop":
+				this.stop(id, {kind: "ended"});
+				break;
+			case "auto":
+			default:
+				if (!this.getEffectiveLoop(id) || !this.advancePlaylist(id, false)) {
+					this.stop(id, {kind: "ended"});
+				}
+				break;
+		}
 	}
 
 	private setupAudioElement(id: string, el: HTMLAudioElement): void {
 		el.addEventListener("ended", () => {
-			const state = this.tracks.get(id);
-			if (!state) return;
-
-			if (state.def.files.length > 1 && this.getEffectiveLoop(id)) {
-				if (state.def.random) {
-					let next = Math.floor(Math.random() * state.def.files.length);
-					if (state.def.files.length > 1 && next === state.currentIndex) {
-						next = (next + 1) % state.def.files.length;
-					}
-					state.currentIndex = next;
-				} else {
-					state.currentIndex = (state.currentIndex + 1) % state.def.files.length;
-				}
-				void this.playCurrentIndex(id);
-			} else if (state.def.files.length === 1 && this.getEffectiveLoop(id) && (this.hasRegion(state.def) || this.regionOverrides.has(id))) {
-				const region = this.getEffectiveRegion(id);
-				const loopTo = region.startTime ?? 0;
-				el.currentTime = loopTo;
-				const mult = this.computeRegionFade(id, state.def, loopTo);
-				this.regionFadeMultipliers.set(id, mult);
-				this.applyVolume(id);
-				void el.play().catch((e) => {
-					console.error(`RPG Audio: failed to loop region for "${id}"`, e);
-					state.playState = PlayState.Stopped;
-					this.trigger(EVENT_TRACK_CHANGED, id);
-				});
-			} else {
-				this.cancelConfiguredVolumeFade(id);
-				state.playState = PlayState.Stopped;
-				state.currentIndex = 0;
-				state.lastCause = buildCause("stop", {kind: "ended"});
-				this.trigger(EVENT_TRACK_CHANGED, id);
-				this.cleanupIfOrphaned(id);
-			}
+			if (this.audioElements.get(id) !== el) return;
+			this.handleItemCompletion(id);
 		});
 
 		el.addEventListener("timeupdate", () => {
+			if (this.audioElements.get(id) !== el) return;
 			const state = this.tracks.get(id);
 			if (!state || state.playState !== PlayState.Playing) return;
 
@@ -1057,20 +1514,23 @@ export class AudioManager extends Events {
 			const duration = isFinite(el.duration) ? el.duration : 0;
 			this.trigger(EVENT_TIME_UPDATE, id, currentTime, duration);
 
-			if (!this.hasRegion(state.def) && !this.regionOverrides.has(id)) return;
-
 			const region = this.getEffectiveRegion(id);
-			if (region.endTime !== null && currentTime >= region.endTime) {
-				if (this.getEffectiveLoop(id)) {
-					const loopTo = region.startTime ?? 0;
-					el.currentTime = loopTo;
-					const mult = this.computeRegionFade(id, state.def, loopTo);
-					this.regionFadeMultipliers.set(id, mult);
-					this.applyVolume(id);
-				} else {
-					this.regionFadeMultipliers.delete(id);
-					this.stop(id, {kind: "ended"});
+			const naturalEnd = duration > 0 ? duration : Infinity;
+			const effectiveEnd = region.endTime === null ? naturalEnd : Math.min(region.endTime, naturalEnd);
+			if (state.def.playlistCrossfadeDuration > 0 && !this.playlistCrossfading.has(id)
+				&& !this.playlistCrossfadeFailed.has(id) && Number.isFinite(effectiveEnd)) {
+				let completeCycle: boolean | null = null;
+				if (state.def.playlistEndAction === "next") completeCycle = true;
+				else if (state.def.playlistEndAction === "auto" && this.getEffectiveLoop(id)) completeCycle = false;
+				if (completeCycle !== null && effectiveEnd - currentTime <= state.def.playlistCrossfadeDuration) {
+					const nextIndex = this.getNextPlaylistIndex(id, completeCycle);
+					if (nextIndex !== null) void this.startPlaylistCrossfade(id, nextIndex);
 				}
+			}
+			if (region.startTime === null && region.endTime === null) return;
+			if (region.endTime !== null && currentTime >= region.endTime) {
+				if (this.playlistCrossfading.has(id)) el.pause();
+				else this.handleItemCompletion(id);
 				return;
 			}
 
@@ -1084,12 +1544,14 @@ export class AudioManager extends Events {
 		const state = this.tracks.get(id);
 		if (!state) return;
 
-		const filePath = state.def.files[state.currentIndex];
+		const filePath = state.def.entries[state.currentIndex]?.path;
 		if (!filePath) return;
 
 		const resourceUrl = this.resolveFile(filePath);
 		if (!resourceUrl) {
 			state.error = `File not found: ${filePath}`;
+			state.errorIndex = state.currentIndex;
+			state.loadingIndex = null;
 			state.playState = PlayState.Stopped;
 			this.trigger(EVENT_TRACK_CHANGED, id);
 			return;
@@ -1098,15 +1560,45 @@ export class AudioManager extends Events {
 		const el = this.audioElements.get(id);
 		if (!el) return;
 
+		const sourceRequest = this.beginSourceRequest(id);
+		state.loadingIndex = state.currentIndex;
+		state.error = null;
+		state.errorIndex = null;
+		this.trigger(EVENT_TRACK_CHANGED, id);
 		el.src = resourceUrl;
 		el.loop = false;
 		try {
+			const region = this.getEffectiveRegion(id);
+			if (region.startTime !== null) {
+				if (el.readyState < HTMLMediaElement.HAVE_METADATA) {
+					await new Promise<void>((resolve) => {
+						el.addEventListener("loadedmetadata", () => resolve(), {once: true});
+						el.addEventListener("error", () => resolve(), {once: true});
+					});
+				}
+				if (!this.isCurrentSourceRequest(id, sourceRequest)) return;
+				if (isFinite(el.duration) && region.startTime >= el.duration) {
+					throw new Error("Region start is beyond the file duration");
+				}
+				el.currentTime = region.startTime;
+			}
+			if (region.startTime !== null || region.endTime !== null) {
+				this.regionFadeMultipliers.set(id, this.computeRegionFade(id, state.def, el.currentTime));
+			} else {
+				this.regionFadeMultipliers.delete(id);
+			}
 			await el.play();
+			if (!this.isCurrentSourceRequest(id, sourceRequest)) return;
+			state.loadingIndex = null;
 			state.error = null;
+			state.errorIndex = null;
 			this.applyVolume(id);
 		} catch (e) {
+			if (!this.isCurrentSourceRequest(id, sourceRequest)) return;
 			console.error(`RPG Audio: failed to play track "${id}"`, e);
 			state.error = `Playback failed: ${filePath}`;
+			state.errorIndex = state.currentIndex;
+			state.loadingIndex = null;
 			state.playState = PlayState.Stopped;
 		}
 		this.trigger(EVENT_TRACK_CHANGED, id);

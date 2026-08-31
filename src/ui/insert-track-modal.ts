@@ -23,6 +23,8 @@ function generateCodeBlock(opts: {
 	files: string[];
 	loop: boolean;
 	random: boolean;
+	playlistEndAction: string;
+	playlistCrossfade: string;
 	autoplay: boolean;
 	stops: string;
 	fadesout: string;
@@ -43,6 +45,12 @@ function generateCodeBlock(opts: {
 	lines.push(`type: ${opts.type}`);
 	if (opts.loop) lines.push("loop: true");
 	if (opts.random) lines.push("random: true");
+	if (opts.files.length > 1 && opts.playlistEndAction !== "auto") {
+		lines.push(`playlist-end-action: ${opts.playlistEndAction}`);
+	}
+	if (opts.files.length > 1 && opts.playlistCrossfade.trim()) {
+		lines.push(`crossfade: ${opts.playlistCrossfade.trim()}`);
+	}
 	if (opts.autoplay) lines.push("autoplay: true");
 	if (opts.scope.trim()) lines.push(`scope: ${opts.scope.trim()}`);
 	if (opts.stops.trim()) lines.push(`stops: ${opts.stops.trim()}`);
@@ -105,6 +113,8 @@ export class InsertTrackModal extends Modal {
 	private selectedFiles: string[] = [];
 	private loop = false;
 	private random = false;
+	private playlistEndAction = "auto";
+	private playlistCrossfadeInput = "";
 	private autoplay = false;
 	private stops = "";
 	private fadesout = "";
@@ -273,17 +283,35 @@ export class InsertTrackModal extends Modal {
 
 			new Setting(details)
 				.setName("Start time")
-				.setDesc("Seek to this position on play, for example 0:25 or 1:05:30 (single-file tracks only)")
+				.setDesc("Start boundary for a single file or the default inherited by playlist items")
 				.addText(text => text
 					.setPlaceholder("0:25")
 					.onChange(value => { this.startInput = value; }));
 
 			new Setting(details)
 				.setName("End time")
-				.setDesc("Stop or loop at this position, for example 1:33 (single-file tracks only)")
+				.setDesc("End boundary for a single file or the default inherited by playlist items")
 				.addText(text => text
 					.setPlaceholder("1:33")
 					.onChange(value => { this.endInput = value; }));
+
+			new Setting(details)
+				.setName("Playlist end action")
+				.setDesc("What a playlist does when an item reaches its end boundary or natural ending")
+				.addDropdown(dropdown => dropdown
+					.addOption("auto", "Auto (follow loop)")
+					.addOption("next", "Next item")
+					.addOption("repeat", "Repeat item")
+					.addOption("stop", "Stop playlist")
+					.setValue(this.playlistEndAction)
+					.onChange(value => { this.playlistEndAction = value; }));
+
+			new Setting(details)
+				.setName("Playlist crossfade")
+				.setDesc("Seconds that adjacent playlist items overlap while fading into each other. Leave blank to use the plugin's default playlist crossfade setting, or set to 0 for an instant change.")
+				.addText(text => text
+					.setPlaceholder("3")
+					.onChange(value => { this.playlistCrossfadeInput = value; }));
 
 			new Setting(details)
 				.setName("Fade in duration")
@@ -308,14 +336,14 @@ export class InsertTrackModal extends Modal {
 
 			new Setting(details)
 				.setName("Volume fade target")
-				.setDesc("Target volume from 0 to 1. Requires a volume fade duration.")
+				.setDesc("Target volume from 0 to 1. Requires a volume fade duration. Leave both blank to use the plugin's default volume fade settings.")
 				.addText(text => text
 					.setPlaceholder("0.5")
 					.onChange(value => { this.volumeFadeTargetInput = value; }));
 
 			new Setting(details)
 				.setName("Volume fade duration")
-				.setDesc("Seconds for a linear fade from the initial volume to the target volume")
+				.setDesc("Seconds for a linear fade from the initial volume to the target volume. Leave both blank to use the plugin's default volume fade settings.")
 				.addText(text => text
 					.setPlaceholder("60")
 					.onChange(value => { this.volumeFadeDurationInput = value; }));
@@ -403,6 +431,8 @@ export class InsertTrackModal extends Modal {
 			files: this.selectedFiles,
 			loop: this.loop,
 			random: this.random,
+			playlistEndAction: this.playlistEndAction,
+			playlistCrossfade: this.playlistCrossfadeInput,
 			autoplay: this.autoplay,
 			stops: this.stops,
 			fadesout: this.fadesout,
