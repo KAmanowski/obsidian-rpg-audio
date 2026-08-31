@@ -1,14 +1,30 @@
-import {AudioTrackDef} from "./types";
+import {AudioFileEntry, AudioTrackDef, PlaylistEndAction} from "./types";
 
 export interface AudioBlockParseResult {
 	def: AudioTrackDef | null;
 	errors: string[];
 }
 
+export interface AudioBlockDefaults {
+	/** Playlist crossfade applied when a block omits "crossfade", in seconds. */
+	playlistCrossfadeDuration: number;
+	/** Volume fade target applied when a block omits "volume-fade-to". Ignored unless volumeFadeDuration is above 0. */
+	volumeFadeTarget: number;
+	/** Volume fade duration applied when a block omits "volume-fade-duration", in seconds. Zero disables the default fade. */
+	volumeFadeDuration: number;
+}
+
+const NO_DEFAULTS: AudioBlockDefaults = {
+	playlistCrossfadeDuration: 0,
+	volumeFadeTarget: 0.5,
+	volumeFadeDuration: 0,
+};
+
 const KNOWN_SETTINGS = new Set([
 	"id", "name", "type", "loop", "random", "autoplay", "stops", "fadesout",
 	"resumes", "starts", "pauses", "scope", "start", "end", "fadein", "fadeout",
-	"volume", "volume-fade-to", "volume-fade-duration", "file", "files",
+	"volume", "volume-fade-to", "volume-fade-duration", "file", "files", "playlist-end-action",
+	"crossfade",
 ]);
 
 function parseTimestamp(value: string): number | null {
@@ -45,7 +61,82 @@ function parseNonNegativeSeconds(value: string): number | null {
 	return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
-export function parseAudioBlockDetailed(source: string): AudioBlockParseResult {
+function parseDurationSeconds(value: string): number | null {
+	const normalized = value.trim().toLowerCase();
+	if (!normalized) return null;
+	const numeric = normalized.endsWith("s") ? normalized.slice(0, -1).trim() : normalized;
+	return parseNonNegativeSeconds(numeric);
+}
+
+function parseEntryBoundary(
+	value: string,
+	key: "start" | "end",
+	lineNumber: number,
+	errors: string[],
+): number | null | undefined {
+	if (!value) {
+		errors.push(`Line ${lineNumber}: Playlist file option "${key}" cannot be empty.`);
+		return undefined;
+	}
+	if (value.toLowerCase() === "none") return null;
+	const parsed = parseTimestamp(value);
+	if (parsed === null) {
+		errors.push(`Line ${lineNumber}: Playlist file option "${key}" must be a timestamp or "none".`);
+		return undefined;
+	}
+	return parsed;
+}
+
+function parseFileEntry(value: string, lineNumber: number, errors: string[]): AudioFileEntry {
+	let remaining = value.trim();
+	const entry: AudioFileEntry = {path: "", title: null};
+
+	const braceStart = remaining.lastIndexOf(" {");
+	if (braceStart >= 0 && remaining.endsWith("}")) {
+		const optionText = remaining.slice(braceStart + 2, -1).trim();
+		remaining = remaining.slice(0, braceStart).trim();
+		const seen = new Set<string>();
+		if (!optionText) errors.push(`Line ${lineNumber}: Playlist file options inside braces cannot be empty.`);
+		for (const rawOption of optionText.split(",")) {
+			const equals = rawOption.indexOf("=");
+			if (equals < 0) {
+				errors.push(`Line ${lineNumber}: Playlist file option "${rawOption.trim()}" must use name=value.`);
+				continue;
+			}
+			const key = rawOption.slice(0, equals).trim().toLowerCase();
+			const rawValue = rawOption.slice(equals + 1).trim();
+			if (key !== "start" && key !== "end") {
+				errors.push(`Line ${lineNumber}: Unknown playlist file option "${key}".`);
+				continue;
+			}
+			if (seen.has(key)) {
+				errors.push(`Line ${lineNumber}: Playlist file option "${key}" is duplicated.`);
+				continue;
+			}
+			seen.add(key);
+			const parsed = parseEntryBoundary(rawValue, key, lineNumber, errors);
+			if (parsed !== undefined) {
+				if (key === "start") entry.startTime = parsed;
+				else entry.endTime = parsed;
+			}
+		}
+	} else if (remaining.includes("{") || remaining.includes("}")) {
+		errors.push(`Line ${lineNumber}: Playlist file options must be a trailing block such as {start=0:30, end=2:00}.`);
+	}
+
+	const titleStart = remaining.lastIndexOf(" [");
+	if (titleStart >= 0 && remaining.endsWith("]")) {
+		entry.path = remaining.slice(0, titleStart).trim();
+		entry.title = remaining.slice(titleStart + 2, -1).trim() || null;
+		if (!entry.title) errors.push(`Line ${lineNumber}: Audio file title inside brackets cannot be empty.`);
+	} else {
+		entry.path = remaining;
+	}
+	if (!entry.path) errors.push(`Line ${lineNumber}: Audio file path cannot be empty.`);
+	return entry;
+}
+
+export function parseAudioBlockDetailed(source: string, defaults: AudioBlockDefaults = NO_DEFAULTS): AudioBlockParseResult {
 	const lines = source.split("\n")
 		.map((raw, index) => ({text: raw.trim(), number: index + 1}))
 		.filter(line => line.text.length > 0);
@@ -56,6 +147,10 @@ export function parseAudioBlockDetailed(source: string): AudioBlockParseResult {
 	let type = "";
 	let loop = false;
 	let random = false;
+	let playlistEndAction: PlaylistEndAction = "auto";
+	let sawPlaylistEndAction = false;
+	let playlistCrossfadeDuration = 0;
+	let sawPlaylistCrossfade = false;
 	let autoplay = false;
 	let stops: string[] = [];
 	let fadesout: string[] = [];
@@ -71,14 +166,14 @@ export function parseAudioBlockDetailed(source: string): AudioBlockParseResult {
 	let volumeFadeDuration = 0;
 	let sawVolumeFadeTarget = false;
 	let sawVolumeFadeDuration = false;
-	const files: string[] = [];
+	const entries: AudioFileEntry[] = [];
+	const entryLines: number[] = [];
 	let inFilesList = false;
 
 	for (const line of lines) {
 		if (inFilesList && line.text.startsWith("- ")) {
-			const path = line.text.slice(2).trim();
-			if (path) files.push(path);
-			else errors.push(`Line ${line.number}: Audio file path cannot be empty.`);
+			const entry = parseFileEntry(line.text.slice(2).trim(), line.number, errors);
+			if (entry.path) { entries.push(entry); entryLines.push(line.number); }
 			continue;
 		}
 		inFilesList = false;
@@ -110,6 +205,22 @@ export function parseAudioBlockDetailed(source: string): AudioBlockParseResult {
 				const parsed = parseBoolean(value);
 				if (parsed === null) errors.push(`Line ${line.number}: "random" must be true or false.`);
 				else random = parsed;
+				break;
+			}
+			case "playlist-end-action": {
+				sawPlaylistEndAction = true;
+				if (value === "auto" || value === "next" || value === "repeat" || value === "stop") {
+					playlistEndAction = value;
+				} else {
+					errors.push(`Line ${line.number}: "playlist-end-action" must be auto, next, repeat, or stop.`);
+				}
+				break;
+			}
+			case "crossfade": {
+				sawPlaylistCrossfade = true;
+				const parsed = parseDurationSeconds(value);
+				if (parsed === null) errors.push(`Line ${line.number}: "crossfade" must be zero or a positive number of seconds, such as 3 or 3s.`);
+				else playlistCrossfadeDuration = parsed;
 				break;
 			}
 			case "autoplay": {
@@ -178,7 +289,10 @@ export function parseAudioBlockDetailed(source: string): AudioBlockParseResult {
 				break;
 			}
 			case "file":
-				if (value) files.push(value);
+				if (value) {
+					const entry = parseFileEntry(value, line.number, errors);
+					if (entry.path) { entries.push(entry); entryLines.push(line.number); }
+				}
 				break;
 			case "files":
 				if (value) errors.push(`Line ${line.number}: Put playlist paths on following lines, each beginning with "- ".`);
@@ -189,24 +303,40 @@ export function parseAudioBlockDetailed(source: string): AudioBlockParseResult {
 
 	if (!id) errors.push("Missing required setting: id.");
 	if (!name) errors.push("Missing required setting: name.");
-	if (files.length === 0) errors.push("Missing required audio file: add file or files.");
+	if (entries.length === 0) errors.push("Missing required audio file: add file or files.");
 	if (startTime !== null && endTime !== null && endTime <= startTime) errors.push('"end" must be later than "start".');
 	if (sawVolumeFadeTarget !== sawVolumeFadeDuration) errors.push('"volume-fade-to" and "volume-fade-duration" must be used together.');
+	if (sawPlaylistEndAction && entries.length < 2) errors.push('"playlist-end-action" requires more than one audio file.');
+	if (sawPlaylistCrossfade && entries.length < 2) errors.push('"crossfade" requires more than one audio file.');
+	for (let index = 0; index < entries.length; index++) {
+		const entry = entries[index];
+		if (!entry || (entry.startTime === undefined && entry.endTime === undefined)) continue;
+		const effectiveStart = entry.startTime === undefined ? startTime : entry.startTime;
+		const effectiveEnd = entry.endTime === undefined ? endTime : entry.endTime;
+		if (effectiveStart !== null && effectiveEnd !== null && effectiveEnd <= effectiveStart) {
+			errors.push(`Line ${entryLines[index]}: Effective file "end" must be later than "start".`);
+		}
+	}
 
-	if (!type) type = files.length > 1 ? "playlist" : "sfx";
+	if (!type) type = entries.length > 1 ? "playlist" : "sfx";
+	if (!sawPlaylistCrossfade) playlistCrossfadeDuration = defaults.playlistCrossfadeDuration;
+	if (!sawVolumeFadeTarget && !sawVolumeFadeDuration) {
+		volumeFadeTarget = defaults.volumeFadeTarget;
+		volumeFadeDuration = defaults.volumeFadeDuration;
+	}
 	if (volumeFadeTarget === null || volumeFadeDuration <= 0) {
 		volumeFadeTarget = null;
 		volumeFadeDuration = 0;
 	}
 
-	const def: AudioTrackDef | null = id && name && files.length > 0 ? {
-		id, name, type, files, loop, random, autoplay, stops, fadesout, resumes, pauses, scope,
+	const def: AudioTrackDef | null = id && name && entries.length > 0 ? {
+		id, name, type, entries, playlistEndAction, playlistCrossfadeDuration, loop, random, autoplay, stops, fadesout, resumes, pauses, scope,
 		startTime, endTime, fadeInDuration, fadeOutDuration, volume, volumeFadeTarget, volumeFadeDuration,
 	} : null;
 	return {def, errors: Array.from(new Set(errors))};
 }
 
 /** Compatibility helper for callers that only need the normalized definition. */
-export function parseAudioBlock(source: string): AudioTrackDef | null {
-	return parseAudioBlockDetailed(source).def;
+export function parseAudioBlock(source: string, defaults?: AudioBlockDefaults): AudioTrackDef | null {
+	return parseAudioBlockDetailed(source, defaults).def;
 }

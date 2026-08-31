@@ -794,8 +794,8 @@ export class RpgAudioSidebarView extends ItemView {
 			el.addClass("rpg-audio-error-text");
 		} else {
 			el.removeClass("rpg-audio-error-text");
-			if (state.playState === PlayState.Playing && state.def.files.length > 1) {
-				text = `${state.currentIndex + 1}/${state.def.files.length}`;
+			if (state.playState === PlayState.Playing && state.def.entries.length > 1) {
+				text = `${state.currentIndex + 1}/${state.def.entries.length}`;
 			}
 		}
 		el.setText(text);

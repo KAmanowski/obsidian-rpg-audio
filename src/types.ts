@@ -4,11 +4,25 @@ export enum PlayState {
 	Paused = "paused",
 }
 
+export type PlaylistEndAction = "auto" | "next" | "repeat" | "stop";
+
+export interface AudioFileEntry {
+	path: string;
+	title: string | null;
+	/** Undefined inherits the block setting; null explicitly removes the boundary. */
+	startTime?: number | null;
+	/** Undefined inherits the block setting; null explicitly removes the boundary. */
+	endTime?: number | null;
+}
+
 export interface AudioTrackDef {
 	id: string;
 	name: string;
 	type: string;
-	files: string[];
+	entries: AudioFileEntry[];
+	playlistEndAction: PlaylistEndAction;
+	/** Overlap duration between playlist items, in seconds. Zero disables playlist crossfading. */
+	playlistCrossfadeDuration: number;
 	loop: boolean;
 	random: boolean;
 	autoplay: boolean;
@@ -46,6 +60,10 @@ export interface AudioTrackState {
 	playState: PlayState;
 	volume: number;
 	currentIndex: number;
+	/** Playlist item currently waiting for playback to start. */
+	loadingIndex: number | null;
+	/** Playlist item associated with the current runtime error. */
+	errorIndex: number | null;
 	error: string | null;
 	lastCause: TrackCause | null;
 }

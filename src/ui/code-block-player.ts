@@ -16,6 +16,11 @@ import {
 	SettingsButtonsElements,
 	SeekBarElements,
 } from "./player-controls";
+import {
+	createPlaylistDropdown,
+	PlaylistDropdownElements,
+	updatePlaylistDropdown,
+} from "./playlist-dropdown";
 
 export function formatTimestamp(secs: number): string {
 	const m = Math.floor(secs / 60);
@@ -41,6 +46,7 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 	private volumeSlider: HTMLInputElement | null = null;
 	private settingsEl: SettingsButtonsElements | null = null;
 	private seekBarElements: SeekBarElements | null = null;
+	private playlistElements: PlaylistDropdownElements | null = null;
 	private eventRef: (() => void) | null = null;
 	private timeUpdateRef: (() => void) | null = null;
 	private autoplayTimer: number | null = null;
@@ -153,6 +159,16 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 			initialVolume,
 		);
 
+		if (this.def.entries.length > 1) {
+			this.playlistElements = createPlaylistDropdown(el, this.def.entries, {
+				onSelect: (index) => {
+					this.ensureActive();
+					void this.manager.selectPlaylistIndex(this.def.id, index);
+				},
+				onExpand: () => this.syncPlaylistState(),
+			});
+		}
+
 		// Seek bar (hidden in stopped state via CSS)
 		this.seekBarElements = createSeekBar(el, {
 			onSeek: (time) => { this.ensureActive(); this.manager.seek(this.def.id, time); },
@@ -215,12 +231,20 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 			updateSettingsButtons(this.settingsEl, this.manager.getEffectiveLoop(this.def.id));
 		}
 
+		this.syncPlaylistState(state);
+
 		if (this.seekBarElements) {
 			const currentTime = this.manager.getCurrentTime(this.def.id);
 			const duration = this.manager.getDuration(this.def.id);
 			const region = this.manager.getEffectiveRegion(this.def.id);
 			updateSeekBar(this.seekBarElements, currentTime, duration, region, state.playState);
 		}
+	}
+
+	private syncPlaylistState(state = this.manager.getTrack(this.def.id)): void {
+		if (!state || !this.playlistElements) return;
+		const unavailable = new Set(this.manager.getMissingAudioFiles(this.def.entries.map(entry => entry.path)));
+		updatePlaylistDropdown(this.playlistElements, state, unavailable);
 	}
 
 	private syncFadeOutVisualState(): void {
