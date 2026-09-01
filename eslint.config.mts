@@ -25,6 +25,7 @@ export default tseslint.config(
 	globalIgnores([
 		"node_modules",
 		"dist",
+		"src/data/emoji-data.generated.ts",
 		"esbuild.config.mjs",
 		"test.config.mjs",
 		"eslint.config.js",

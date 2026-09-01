@@ -32,6 +32,7 @@ import {
 	SeekBarElements,
 } from "./player-controls";
 import {formatTimestamp} from "./code-block-player";
+import {preserveScrollPosition} from "./scroll-preservation";
 
 function formatCause(cause: TrackCause): string {
 	const kindLabel = cause.kind === "user" ? "" : ` (${cause.kind})`;
@@ -441,7 +442,7 @@ export class RpgAudioSidebarView extends ItemView {
 		await this.plugin.saveSettings();
 		this.updateDebugBtn();
 		this.updateActiveScope();
-		this.renderAll();
+		this.renderAll(true);
 	}
 
 	private updateActiveScope(): void {
@@ -459,7 +460,13 @@ export class RpgAudioSidebarView extends ItemView {
 		this.activeScopeEl.createSpan({text: label});
 	}
 
-	private renderAll(): void {
+	private renderAll(preserveScroll = false): void {
+		if (!this.contentArea) return;
+		if (preserveScroll) preserveScrollPosition(this.contentArea, () => this.renderAllContent());
+		else this.renderAllContent();
+	}
+
+	private renderAllContent(): void {
 		if (!this.contentArea) return;
 		this.contentArea.empty();
 		this.trackRows.clear();
@@ -543,7 +550,7 @@ export class RpgAudioSidebarView extends ItemView {
 				} else {
 					this.collapsedGroups.add(type);
 				}
-				this.renderAll();
+				this.renderAll(true);
 			});
 
 			if (!isCollapsed) {

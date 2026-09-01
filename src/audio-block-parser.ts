@@ -27,7 +27,7 @@ const KNOWN_SETTINGS = new Set([
 	"crossfade",
 ]);
 
-function parseTimestamp(value: string): number | null {
+export function parseAudioTimestamp(value: string): number | null {
 	const parts = value.split(":").map(part => part.trim());
 	if (parts.length < 1 || parts.length > 3 || parts.some(part => part.length === 0)) return null;
 	const numbers = parts.map(Number);
@@ -49,19 +49,19 @@ function parseBoolean(value: string): boolean | null {
 	return null;
 }
 
-function parseVolume(value: string): number | null {
+export function parseAudioVolume(value: string): number | null {
 	if (!value) return null;
 	const parsed = Number(value);
 	return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : null;
 }
 
-function parseNonNegativeSeconds(value: string): number | null {
+export function parseNonNegativeSeconds(value: string): number | null {
 	if (!value) return null;
 	const parsed = Number(value);
 	return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
-function parseDurationSeconds(value: string): number | null {
+export function parseDurationSeconds(value: string): number | null {
 	const normalized = value.trim().toLowerCase();
 	if (!normalized) return null;
 	const numeric = normalized.endsWith("s") ? normalized.slice(0, -1).trim() : normalized;
@@ -79,7 +79,7 @@ function parseEntryBoundary(
 		return undefined;
 	}
 	if (value.toLowerCase() === "none") return null;
-	const parsed = parseTimestamp(value);
+	const parsed = parseAudioTimestamp(value);
 	if (parsed === null) {
 		errors.push(`Line ${lineNumber}: Playlist file option "${key}" must be a timestamp or "none".`);
 		return undefined;
@@ -245,13 +245,13 @@ export function parseAudioBlockDetailed(source: string, defaults: AudioBlockDefa
 				break;
 			}
 			case "start": {
-				const parsed = parseTimestamp(value);
+				const parsed = parseAudioTimestamp(value);
 				if (parsed === null) errors.push(`Line ${line.number}: "start" must be a non-negative timestamp such as 25 or 1:30.`);
 				else startTime = parsed;
 				break;
 			}
 			case "end": {
-				const parsed = parseTimestamp(value);
+				const parsed = parseAudioTimestamp(value);
 				if (parsed === null) errors.push(`Line ${line.number}: "end" must be a non-negative timestamp such as 90 or 1:30.`);
 				else endTime = parsed;
 				break;
@@ -269,14 +269,14 @@ export function parseAudioBlockDetailed(source: string, defaults: AudioBlockDefa
 				break;
 			}
 			case "volume": {
-				const parsed = parseVolume(value);
+				const parsed = parseAudioVolume(value);
 				if (parsed === null) errors.push(`Line ${line.number}: "volume" must be a number from 0 to 1.`);
 				else volume = parsed;
 				break;
 			}
 			case "volume-fade-to": {
 				sawVolumeFadeTarget = true;
-				const parsed = parseVolume(value);
+				const parsed = parseAudioVolume(value);
 				if (parsed === null) errors.push(`Line ${line.number}: "volume-fade-to" must be a number from 0 to 1.`);
 				else volumeFadeTarget = parsed;
 				break;
