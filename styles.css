@@ -480,6 +480,23 @@ input[type="range"].rpg-audio-volume.is-volume-increasing::-moz-range-thumb {
 	margin-top: 3px;
 }
 
+.rpg-audio-error-message {
+	line-height: 1.45;
+}
+
+.rpg-audio-error-edit {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 8px;
+	color: var(--text-normal);
+}
+
+.rpg-audio-error-edit svg {
+	width: 14px;
+	height: 14px;
+}
+
 .rpg-audio-error-text {
 	color: var(--text-error);
 }
@@ -814,89 +831,6 @@ input[type="range"].rpg-audio-volume.is-volume-increasing::-moz-range-thumb {
 }
 
 /* ── Insert track modal ───────────────────────────────────────────────────── */
-
-.rpg-audio-insert-modal {
-	padding: 12px;
-}
-
-.rpg-audio-insert-modal h2 {
-	margin-top: 0;
-	margin-bottom: 12px;
-}
-
-.rpg-audio-insert-advanced-summary {
-	cursor: pointer;
-	color: var(--text-muted);
-	font-size: 0.85em;
-	padding: 8px 0;
-	user-select: none;
-}
-
-.rpg-audio-file-list {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-	width: 100%;
-	margin-top: 6px;
-}
-
-.rpg-audio-file-chip {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 4px 8px;
-	border-radius: 6px;
-	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
-	font-size: 0.85em;
-}
-
-.rpg-audio-file-chip-name {
-	flex: 1;
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.rpg-audio-file-chip-remove {
-	flex-shrink: 0;
-	width: 20px;
-	height: 20px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	border: none;
-	background: none;
-	color: var(--text-muted);
-	cursor: pointer;
-	border-radius: 4px;
-	font-size: 1.1em;
-	padding: 0;
-}
-
-.rpg-audio-file-chip-remove:hover {
-	color: var(--text-error);
-	background: var(--background-modifier-hover);
-}
-
-.rpg-audio-custom-type {
-	margin-top: 6px;
-}
-
-.rpg-audio-custom-type.is-hidden {
-	display: none;
-}
-
-.rpg-audio-custom-type-input {
-	width: 100%;
-}
-
-.rpg-audio-insert-btn-row {
-	display: flex;
-	justify-content: flex-end;
-	padding-top: 12px;
-}
 
 /* ── Inline playlist disclosure ─────────────────────────────────────────── */
 
@@ -1243,5 +1177,837 @@ button.rpg-audio-playlist-item {
 
 	.rpg-audio-playlist-list {
 		max-height: 200px;
+	}
+}
+/* Audio block authoring modal */
+.modal.rpg-audio-block-editor-modal {
+	width: min(760px, calc(100vw - 48px));
+	max-width: 760px;
+	max-height: min(88vh, 900px);
+	border-radius: 8px;
+}
+
+.rpg-audio-block-editor-modal .modal-content {
+	padding: 0 24px;
+}
+
+.rpg-audio-block-editor {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+}
+
+.rpg-audio-block-editor-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 0 0 16px;
+}
+
+.rpg-audio-block-editor-subtitle {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	line-height: 1.45;
+}
+
+.rpg-audio-block-mode-badge {
+	flex: 0 0 auto;
+	padding: 4px 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	color: var(--text-muted);
+	background: var(--background-secondary);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-medium);
+}
+
+.rpg-audio-block-mode-badge.is-single {
+	color: var(--color-green);
+	border-color: color-mix(in srgb, var(--color-green) 30%, transparent);
+}
+
+.rpg-audio-block-mode-badge.is-playlist {
+	color: var(--color-purple);
+	border-color: color-mix(in srgb, var(--color-purple) 35%, transparent);
+}
+
+.rpg-audio-block-section {
+	padding: 18px 0;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.rpg-audio-block-section > h3 {
+	margin: 0 0 10px;
+	color: var(--color-purple);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	letter-spacing: .06em;
+	text-transform: uppercase;
+}
+
+.rpg-audio-block-editor .setting-item {
+	padding: 8px 0;
+}
+
+.rpg-audio-block-editor .setting-item-control input[type="text"],
+.rpg-audio-block-editor .setting-item-control input[type="number"] {
+	width: min(220px, 100%);
+}
+
+/* Keep Obsidian's accessible ToggleComponent behavior while matching the
+   compact switch geometry in the audio-block editor design. */
+.rpg-audio-block-editor .checkbox-container {
+	position: relative !important;
+	display: inline-block !important;
+	flex: 0 0 32px !important;
+	width: 32px !important;
+	min-width: 32px !important;
+	height: 18px !important;
+	min-height: 18px !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	border: 0 !important;
+	border-radius: 999px !important;
+	background: #3a3a3a !important;
+	box-shadow: none !important;
+	cursor: pointer;
+}
+
+.rpg-audio-block-editor .checkbox-container::before {
+	display: none !important;
+}
+
+.rpg-audio-block-editor .checkbox-container::after {
+	content: "" !important;
+	position: absolute !important;
+	top: 2px !important;
+	left: 2px !important;
+	display: block !important;
+	width: 14px !important;
+	height: 14px !important;
+	border: 0 !important;
+	border-radius: 50% !important;
+	background: #666 !important;
+	box-shadow: none !important;
+	transform: translateX(0) !important;
+	transition: transform 150ms ease, background-color 150ms ease !important;
+}
+
+.rpg-audio-block-editor .checkbox-container.is-enabled {
+	background: #4ade80 !important;
+}
+
+.rpg-audio-block-editor .checkbox-container.is-enabled::after {
+	background: #fff !important;
+	transform: translateX(14px) !important;
+}
+
+.rpg-audio-block-editor .checkbox-container input[type="checkbox"] {
+	position: absolute !important;
+	inset: 0 !important;
+	z-index: 1;
+	width: 100% !important;
+	height: 100% !important;
+	margin: 0 !important;
+	opacity: 0 !important;
+	cursor: inherit;
+}
+
+.rpg-audio-block-editor .checkbox-container:focus-within {
+	outline: 2px solid #6d9fff !important;
+	outline-offset: 2px !important;
+}
+
+.rpg-audio-block-editor .checkbox-container.is-disabled {
+	opacity: .5;
+	cursor: not-allowed;
+}
+
+.theme-light .rpg-audio-block-editor .checkbox-container {
+	background: #ddd !important;
+}
+
+.theme-light .rpg-audio-block-editor .checkbox-container::after {
+	background: #aaa !important;
+}
+
+.theme-light .rpg-audio-block-editor .checkbox-container.is-enabled {
+	background: #22c55e !important;
+}
+
+.theme-light .rpg-audio-block-editor .checkbox-container.is-enabled::after {
+	background: #fff !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.rpg-audio-block-editor .checkbox-container::after {
+		transition: none !important;
+	}
+}
+
+.rpg-audio-name-control {
+	position: relative;
+	flex-wrap: nowrap;
+}
+
+.rpg-audio-block-editor .rpg-audio-name-control input[type="text"] {
+	min-width: 0;
+	width: min(220px, calc(100% - 38px));
+}
+
+.rpg-audio-emoji-picker-button {
+	flex: 0 0 auto;
+	width: 34px;
+	height: 34px;
+	padding: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
+	font-size: 16px;
+	line-height: 1;
+}
+
+.rpg-audio-emoji-picker-button[aria-expanded="true"] {
+	border-color: color-mix(in srgb, var(--color-purple) 45%, var(--background-modifier-border));
+	background: color-mix(in srgb, var(--color-purple) 14%, var(--background-secondary));
+}
+
+.rpg-audio-emoji-picker {
+	position: absolute;
+	top: calc(100% + 6px);
+	right: 0;
+	z-index: 10;
+	width: min(340px, calc(100vw - 48px));
+	max-height: 380px;
+	overflow: hidden;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-primary);
+	box-shadow: 0 8px 32px rgba(0, 0, 0, .35);
+}
+
+.rpg-audio-emoji-search {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 10px 8px;
+	color: var(--text-faint);
+}
+
+.rpg-audio-emoji-search svg {
+	width: 14px;
+	height: 14px;
+}
+
+.rpg-audio-block-editor .rpg-audio-emoji-search input[type="search"] {
+	width: 100%;
+	min-width: 0;
+	height: 32px;
+	padding: 6px 9px;
+	font-size: var(--font-ui-small);
+}
+
+.rpg-audio-emoji-tabs {
+	display: flex;
+	overflow-x: auto;
+	padding: 0 6px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	scrollbar-width: thin;
+}
+
+button.rpg-audio-emoji-tab {
+	flex: 0 0 auto;
+	width: 35px;
+	height: 32px;
+	padding: 0;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	border-radius: 0;
+	background: transparent;
+	font-size: 14px;
+}
+
+button.rpg-audio-emoji-tab.is-selected {
+	border-bottom-color: var(--color-purple);
+	background: color-mix(in srgb, var(--color-purple) 8%, transparent);
+}
+
+.rpg-audio-emoji-results {
+	max-height: 240px;
+	overflow-y: auto;
+	padding: 8px 10px;
+	scrollbar-width: thin;
+}
+
+.rpg-audio-emoji-group-label {
+	margin: 2px 0 8px;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-medium);
+	letter-spacing: .05em;
+	text-transform: uppercase;
+}
+
+.rpg-audio-emoji-grid {
+	display: grid;
+	grid-template-columns: repeat(8, minmax(0, 1fr));
+	gap: 2px;
+	margin-bottom: 12px;
+}
+
+button.rpg-audio-emoji-option {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	min-width: 0;
+	aspect-ratio: 1;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	font-size: 20px;
+	line-height: 1;
+}
+
+button.rpg-audio-emoji-option:hover,
+button.rpg-audio-emoji-option:focus-visible {
+	background: var(--background-modifier-hover);
+}
+
+button.rpg-audio-emoji-option:focus-visible,
+button.rpg-audio-emoji-tab:focus-visible {
+	outline: 2px solid #6d9fff;
+	outline-offset: -2px;
+}
+
+.rpg-audio-emoji-empty {
+	padding: 28px 16px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	text-align: center;
+}
+
+.rpg-audio-emoji-empty-icon {
+	margin-bottom: 8px;
+	font-size: 28px;
+	opacity: .45;
+}
+
+.rpg-audio-emoji-empty-title {
+	margin-bottom: 4px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-medium);
+}
+
+.rpg-audio-emoji-status {
+	margin: 4px -10px -8px;
+	padding: 6px 10px;
+	border-top: 1px solid var(--background-modifier-border);
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+
+.rpg-audio-segmented {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.rpg-audio-segmented button {
+	min-height: 30px;
+	padding: 4px 9px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.rpg-audio-segmented button.is-selected {
+	border-color: color-mix(in srgb, var(--color-purple) 50%, var(--background-modifier-border));
+	background: color-mix(in srgb, var(--color-purple) 16%, var(--background-secondary));
+	color: var(--text-normal);
+}
+
+.rpg-audio-custom-type-input {
+	width: 100%;
+	margin-top: 6px;
+}
+
+.rpg-audio-files-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 10px;
+}
+
+.rpg-audio-files-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	padding: 24px 16px;
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	text-align: center;
+}
+
+.rpg-audio-editor-file-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.rpg-audio-editor-file-row {
+	min-width: 0;
+	padding: 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
+}
+
+.rpg-audio-editor-file-summary {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.rpg-audio-editor-file-number {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	flex: 0 0 auto;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--color-purple) 16%, var(--background-primary));
+	color: var(--color-purple);
+	font-size: var(--font-ui-smaller);
+}
+
+.rpg-audio-editor-file-path {
+	min-width: 0;
+	flex: 1 1 auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--font-ui-small);
+}
+
+.rpg-audio-editor-file-path.is-missing {
+	color: var(--text-error);
+	text-decoration: line-through;
+}
+
+.rpg-audio-editor-file-actions {
+	display: flex;
+	flex: 0 0 auto;
+	gap: 2px;
+}
+
+.rpg-audio-editor-file-details {
+	margin-top: 6px;
+	padding-top: 6px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.rpg-audio-editor-file-details > summary,
+.rpg-audio-interactions > summary,
+.rpg-audio-code-preview > summary {
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-medium);
+}
+
+.rpg-audio-playlist-only {
+	margin-top: 10px;
+	padding: 10px;
+	border: 1px solid color-mix(in srgb, var(--color-purple) 30%, var(--background-modifier-border));
+	border-radius: 6px;
+	background: color-mix(in srgb, var(--color-purple) 5%, var(--background-secondary));
+}
+
+.rpg-audio-playlist-only-title {
+	color: var(--color-purple);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	letter-spacing: .04em;
+	text-transform: uppercase;
+}
+
+.rpg-audio-playlist-only.is-disabled {
+	border-style: dashed;
+}
+
+.rpg-audio-disabled-explanation {
+	margin: 5px 0;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.4;
+}
+
+.rpg-audio-field-error {
+	display: none;
+	margin: 3px 0 4px;
+	color: var(--text-error);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.35;
+}
+
+.rpg-audio-field-error.is-visible,
+.rpg-audio-editor-file-row > .rpg-audio-field-error {
+	display: block;
+}
+
+.rpg-audio-interactions,
+.rpg-audio-code-preview {
+	padding: 14px 0;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.rpg-audio-interactions[open] > summary,
+.rpg-audio-code-preview[open] > summary {
+	margin-bottom: 10px;
+}
+
+.rpg-audio-code-preview pre {
+	max-height: 260px;
+	margin: 8px 0 0;
+	overflow: auto;
+	white-space: pre;
+	user-select: text;
+}
+
+.rpg-audio-block-editor-footer {
+	position: sticky;
+	bottom: 0;
+	z-index: 2;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin: 0 -24px;
+	padding: 12px 24px;
+	border-top: 1px solid var(--background-modifier-border);
+	background: var(--modal-background, var(--background-primary));
+}
+
+.rpg-audio-validation-summary {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.rpg-audio-validation-summary.is-error {
+	color: var(--text-error);
+}
+
+.rpg-audio-block-editor-actions,
+.rpg-audio-discard-actions,
+.rpg-audio-file-picker-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+.modal.rpg-audio-file-picker-modal {
+	width: min(520px, calc(100vw - 32px));
+	max-width: 520px;
+}
+
+.rpg-audio-file-picker-search {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 10px;
+}
+
+.rpg-audio-file-picker-search input {
+	width: 100%;
+}
+
+.rpg-audio-file-picker-list {
+	max-height: min(52vh, 420px);
+	overflow-y: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+}
+
+.rpg-audio-file-picker-folder {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: var(--background-primary);
+}
+
+.rpg-audio-file-picker-folder-toggle {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-height: 44px;
+	padding: 10px 12px 5px;
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+	background: transparent;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-medium);
+	letter-spacing: .05em;
+	text-align: left;
+	text-transform: uppercase;
+}
+
+.rpg-audio-file-picker-folder-toggle:hover {
+	background: var(--background-modifier-hover);
+}
+
+.rpg-audio-file-picker-folder-chevron {
+	display: inline-flex;
+	flex: 0 0 auto;
+	width: 14px;
+	height: 14px;
+	transition: transform 150ms ease;
+}
+
+.rpg-audio-file-picker-folder-chevron.is-collapsed {
+	transform: rotate(-90deg);
+}
+
+.rpg-audio-file-picker-folder-chevron svg {
+	width: 14px;
+	height: 14px;
+}
+
+.rpg-audio-file-picker-folder-name {
+	min-width: 0;
+	flex: 1 1 auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rpg-audio-file-picker-folder-count {
+	flex: 0 0 auto;
+	min-width: 20px;
+	padding: 2px 6px;
+	border-radius: 999px;
+	background: var(--background-secondary);
+	font-variant-numeric: tabular-nums;
+	letter-spacing: 0;
+	text-align: center;
+}
+
+.rpg-audio-file-picker-folder-content[hidden] {
+	display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.rpg-audio-file-picker-folder-chevron {
+		transition: none;
+	}
+}
+
+.rpg-audio-file-picker-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-height: 44px;
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	cursor: pointer;
+}
+
+.rpg-audio-file-picker-row:last-child {
+	border-bottom: 0;
+}
+
+.rpg-audio-file-picker-row:hover {
+	background: var(--background-modifier-hover);
+}
+
+.rpg-audio-file-picker-row-details {
+	min-width: 0;
+}
+
+.rpg-audio-file-picker-name,
+.rpg-audio-file-picker-path {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rpg-audio-file-picker-name {
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+}
+
+.rpg-audio-file-picker-path,
+.rpg-audio-file-picker-count,
+.rpg-audio-file-picker-empty {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.rpg-audio-file-picker-empty {
+	padding: 24px;
+	text-align: center;
+}
+
+.rpg-audio-file-picker-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding-top: 12px;
+}
+
+.rpg-audio-more-actions {
+	flex: 0 0 auto;
+}
+
+.rpg-audio-block-editor :focus-visible,
+.rpg-audio-file-picker-modal :focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+	.modal.rpg-audio-block-editor-modal,
+	.modal.rpg-audio-file-picker-modal {
+		width: 100vw;
+		max-width: 100vw;
+		height: 100dvh;
+		max-height: 100dvh;
+		border-radius: 0;
+	}
+
+	.rpg-audio-block-editor-modal .modal-content {
+		padding: 0 16px;
+	}
+
+	.rpg-audio-block-editor-header,
+	.rpg-audio-files-heading,
+	.rpg-audio-block-editor-footer,
+	.rpg-audio-file-picker-footer {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.rpg-audio-block-editor-footer {
+		margin: 0 -16px;
+		padding: 12px 16px;
+	}
+
+	.rpg-audio-block-editor-actions,
+	.rpg-audio-file-picker-actions {
+		width: 100%;
+	}
+
+	.rpg-audio-block-editor-actions button,
+	.rpg-audio-file-picker-actions button,
+	.rpg-audio-files-heading button,
+	.rpg-audio-editor-file-actions button,
+	.rpg-audio-segmented button {
+		min-height: 44px;
+	}
+
+	.rpg-audio-block-editor-actions button,
+	.rpg-audio-file-picker-actions button {
+		flex: 1 1 0;
+	}
+
+	.rpg-audio-editor-file-summary {
+		align-items: flex-start;
+		flex-wrap: wrap;
+	}
+
+	.rpg-audio-editor-file-path {
+		flex-basis: calc(100% - 40px);
+	}
+
+	.rpg-audio-editor-file-actions {
+		width: 100%;
+		justify-content: flex-end;
+	}
+
+	.rpg-audio-block-editor .setting-item {
+		align-items: stretch;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.rpg-audio-block-editor .setting-item-control,
+	.rpg-audio-block-editor .setting-item-control input[type="text"],
+	.rpg-audio-block-editor .setting-item-control input[type="number"] {
+		width: 100%;
+	}
+
+	.rpg-audio-block-editor .rpg-audio-name-control {
+		flex-direction: row;
+	}
+
+	.rpg-audio-block-editor .rpg-audio-name-control input[type="text"] {
+		width: calc(100% - 38px);
+	}
+
+	.rpg-audio-emoji-picker {
+		position: fixed;
+		top: auto;
+		right: 0;
+		bottom: 0;
+		left: 0;
+		width: 100vw;
+		max-height: 55dvh;
+		border-radius: 12px 12px 0 0;
+	}
+
+	button.rpg-audio-emoji-tab {
+		width: 44px;
+		height: 44px;
+	}
+
+	.rpg-audio-emoji-results {
+		max-height: 280px;
+	}
+
+	.rpg-audio-emoji-grid {
+		grid-template-columns: repeat(7, minmax(0, 1fr));
+		gap: 4px;
+	}
+
+	button.rpg-audio-emoji-option {
+		min-height: 44px;
+		border-radius: 6px;
+		font-size: 24px;
+	}
+
+	.rpg-audio-block-editor .checkbox-container {
+		flex-basis: 36px !important;
+		width: 36px !important;
+		min-width: 36px !important;
+		height: 20px !important;
+		min-height: 20px !important;
+	}
+
+	.rpg-audio-block-editor .checkbox-container::after {
+		width: 16px !important;
+		height: 16px !important;
+	}
+
+	.rpg-audio-block-editor .checkbox-container.is-enabled::after {
+		transform: translateX(16px) !important;
 	}
 }

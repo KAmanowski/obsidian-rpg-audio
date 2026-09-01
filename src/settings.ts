@@ -1,5 +1,6 @@
 import {App, PluginSettingTab, Setting} from "obsidian";
 import type RpgAudioPlugin from "./main";
+import {PlaylistEndAction} from "./types";
 import {
 	ReverbPreset,
 	REVERB_PRESETS,
@@ -11,6 +12,7 @@ import {
 	isOverridden,
 	setCustomPresets,
 } from "./reverb-engine";
+import {preserveScrollPosition} from "./ui/scroll-preservation";
 
 export interface RpgAudioSettings {
 	audioFolder: string;
@@ -27,6 +29,14 @@ export interface RpgAudioSettings {
 	defaultVolumeFadeTarget: number;
 	/** Default volume fade duration applied to blocks that omit "volume-fade-duration", in seconds. Zero disables the fade. */
 	defaultVolumeFadeDuration: number;
+	defaultAudioBlockType: string;
+	defaultAudioBlockLoop: boolean;
+	defaultAudioBlockRandom: boolean;
+	defaultAudioBlockAutoplay: boolean;
+	defaultAudioBlockPlaylistEndAction: PlaylistEndAction;
+	defaultAudioBlockFadeIn: number;
+	defaultAudioBlockFadeOut: number;
+	defaultAudioBlockVolume: number;
 	showDebugInfo: boolean;
 	reverbPreset: string;
 	reverbWet: number;
@@ -48,6 +58,14 @@ export const DEFAULT_SETTINGS: RpgAudioSettings = {
 	defaultPlaylistCrossfade: 0,
 	defaultVolumeFadeTarget: 0.5,
 	defaultVolumeFadeDuration: 0,
+	defaultAudioBlockType: "",
+	defaultAudioBlockLoop: false,
+	defaultAudioBlockRandom: false,
+	defaultAudioBlockAutoplay: false,
+	defaultAudioBlockPlaylistEndAction: "auto",
+	defaultAudioBlockFadeIn: 0,
+	defaultAudioBlockFadeOut: 0,
+	defaultAudioBlockVolume: 1,
 	showDebugInfo: false,
 	reverbPreset: "dry",
 	reverbWet: 0.35,
@@ -55,6 +73,38 @@ export const DEFAULT_SETTINGS: RpgAudioSettings = {
 	reverbLimiter: true,
 	customReverbPresets: [],
 };
+
+function finiteInRange(value: unknown, fallback: number, minimum: number, maximum: number): number {
+	return typeof value === "number" && Number.isFinite(value) && value >= minimum && value <= maximum
+		? value
+		: fallback;
+}
+
+export function normalizeRpgAudioSettings(data: unknown): RpgAudioSettings {
+	const raw = data && typeof data === "object" ? data as Partial<RpgAudioSettings> : {};
+	const settings = Object.assign({}, DEFAULT_SETTINGS, raw);
+	settings.defaultAudioBlockType = typeof raw.defaultAudioBlockType === "string"
+		? raw.defaultAudioBlockType.trim()
+		: DEFAULT_SETTINGS.defaultAudioBlockType;
+	settings.defaultAudioBlockLoop = typeof raw.defaultAudioBlockLoop === "boolean"
+		? raw.defaultAudioBlockLoop
+		: DEFAULT_SETTINGS.defaultAudioBlockLoop;
+	settings.defaultAudioBlockRandom = typeof raw.defaultAudioBlockRandom === "boolean"
+		? raw.defaultAudioBlockRandom
+		: DEFAULT_SETTINGS.defaultAudioBlockRandom;
+	settings.defaultAudioBlockAutoplay = typeof raw.defaultAudioBlockAutoplay === "boolean"
+		? raw.defaultAudioBlockAutoplay
+		: DEFAULT_SETTINGS.defaultAudioBlockAutoplay;
+	settings.defaultAudioBlockPlaylistEndAction = raw.defaultAudioBlockPlaylistEndAction === "next"
+		|| raw.defaultAudioBlockPlaylistEndAction === "repeat"
+		|| raw.defaultAudioBlockPlaylistEndAction === "stop"
+		? raw.defaultAudioBlockPlaylistEndAction
+		: "auto";
+	settings.defaultAudioBlockFadeIn = finiteInRange(raw.defaultAudioBlockFadeIn, 0, 0, 120);
+	settings.defaultAudioBlockFadeOut = finiteInRange(raw.defaultAudioBlockFadeOut, 0, 0, 120);
+	settings.defaultAudioBlockVolume = finiteInRange(raw.defaultAudioBlockVolume, 1, 0, 1);
+	return settings;
+}
 
 export class RpgAudioSettingTab extends PluginSettingTab {
 	plugin: RpgAudioPlugin;
@@ -134,6 +184,10 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 				.onChange((value) => {
 					this.mutateEditedPreset(p => set(p, value));
 				}));
+	}
+
+	private redisplayPreservingScroll(): void {
+		preserveScrollPosition(this.containerEl, () => this.display());
 	}
 
 	display(): void {
@@ -231,6 +285,106 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 	private displayBlockDefaults(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName("Code block defaults").setHeading();
 
+		containerEl.createEl("p", {
+			cls: "setting-item-description",
+			text: "Authoring defaults are copied into new audio blocks. Existing blocks keep their saved values.",
+		});
+
+		new Setting(containerEl)
+			.setName("Default type")
+			.setDesc("Display badge/grouping type selected when a new block opens. Automatic resolves from the selected file count.")
+			.addDropdown(dropdown => dropdown
+				.addOption("", "Automatic")
+				.addOption("music", "Music")
+				.addOption("sfx", "SFX")
+				.addOption("ambience", "Ambience")
+				.addOption("playlist", "Playlist")
+				.setValue(this.plugin.settings.defaultAudioBlockType)
+				.onChange(async value => {
+					this.plugin.settings.defaultAudioBlockType = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Loop new blocks")
+			.setDesc("Enable looping when a new audio block opens.")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.defaultAudioBlockLoop)
+				.onChange(async value => {
+					this.plugin.settings.defaultAudioBlockLoop = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Randomize new playlists")
+			.setDesc("Enable random order when a new block becomes a playlist.")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.defaultAudioBlockRandom)
+				.onChange(async value => {
+					this.plugin.settings.defaultAudioBlockRandom = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Autoplay new blocks")
+			.setDesc("Enable autoplay when a new block opens. Playback still follows the global autoplay permission.")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.defaultAudioBlockAutoplay)
+				.onChange(async value => {
+					this.plugin.settings.defaultAudioBlockAutoplay = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Default playlist end action")
+			.setDesc("Initial item-ending behavior for newly authored playlists.")
+			.addDropdown(dropdown => dropdown
+				.addOption("auto", "Auto (follow loop)")
+				.addOption("next", "Next item")
+				.addOption("repeat", "Repeat item")
+				.addOption("stop", "Stop playlist")
+				.setValue(this.plugin.settings.defaultAudioBlockPlaylistEndAction)
+				.onChange(async value => {
+					this.plugin.settings.defaultAudioBlockPlaylistEndAction = value as PlaylistEndAction;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Default fade in")
+			.setDesc("Fade-in duration copied into new blocks, in seconds. Set to 0 to omit it.")
+			.addSlider(slider => slider
+				.setLimits(0, 120, 1)
+				.setValue(this.plugin.settings.defaultAudioBlockFadeIn)
+				.setDynamicTooltip()
+				.onChange(async value => {
+					this.plugin.settings.defaultAudioBlockFadeIn = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Default fade out")
+			.setDesc("Fade-out duration copied into new blocks, in seconds. Set to 0 to omit it.")
+			.addSlider(slider => slider
+				.setLimits(0, 120, 1)
+				.setValue(this.plugin.settings.defaultAudioBlockFadeOut)
+				.setDynamicTooltip()
+				.onChange(async value => {
+					this.plugin.settings.defaultAudioBlockFadeOut = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Default initial volume")
+			.setDesc("Initial volume copied into new blocks, from 0 (silent) to 1 (full). A value of 1 is omitted from generated code.")
+			.addSlider(slider => slider
+				.setLimits(0, 1, 0.01)
+				.setValue(this.plugin.settings.defaultAudioBlockVolume)
+				.setDynamicTooltip()
+				.onChange(async value => {
+					this.plugin.settings.defaultAudioBlockVolume = value;
+					await this.plugin.saveSettings();
+				}));
+
 		new Setting(containerEl)
 			.setName("Default playlist crossfade")
 			.setDesc("Overlap between adjacent playlist items while fading into each other, in seconds (0-10s), used by rpg-audio blocks that omit their own \"crossfade\" setting. An explicit per-block \"crossfade\" always overrides this. Set to 0 to disable by default.")
@@ -283,7 +437,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 					this.plugin.audioManager.reverbPreset = value;
 					this.plugin.audioManager.reverbWet = this.getWetForPreset(value);
 					await this.plugin.saveSettings();
-					this.display();
+					this.redisplayPreservingScroll();
 				});
 			});
 
@@ -321,7 +475,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 				drop.setValue(this.editingPresetId);
 				drop.onChange((value) => {
 					this.editingPresetId = value;
-					this.display();
+					this.redisplayPreservingScroll();
 				});
 			})
 			.addButton(btn => btn
@@ -335,7 +489,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 					setCustomPresets(this.plugin.settings.customReverbPresets);
 					this.plugin.audioManager.notifyPresetsChanged();
 					await this.plugin.saveSettings();
-					this.display();
+					this.redisplayPreservingScroll();
 				}));
 
 		if (!editing) return;
@@ -354,7 +508,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 						this.plugin.audioManager.refreshReverb();
 						this.plugin.audioManager.notifyPresetsChanged();
 						await this.plugin.saveSettings();
-						this.display();
+						this.redisplayPreservingScroll();
 					}));
 		} else if (!isBuiltin(this.editingPresetId)) {
 			new Setting(containerEl)
@@ -375,7 +529,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 						setCustomPresets(this.plugin.settings.customReverbPresets);
 						this.plugin.audioManager.notifyPresetsChanged();
 						await this.plugin.saveSettings();
-						this.display();
+						this.redisplayPreservingScroll();
 					}));
 		}
 

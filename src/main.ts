@@ -1,13 +1,13 @@
 import { Plugin } from "obsidian";
-import { DEFAULT_SETTINGS, RpgAudioSettings, RpgAudioSettingTab } from "./settings";
+import { normalizeRpgAudioSettings, RpgAudioSettings, RpgAudioSettingTab } from "./settings";
 import { AudioManager } from "./audio-manager";
 import { SIDEBAR_VIEW_TYPE } from "./types";
 import { parseAudioBlockDetailed } from "./audio-block-parser";
 import { getAudioBlockErrors } from "./audio-block-validation";
 import { renderAudioBlockErrors, RpgAudioCodeBlockPlayer } from "./ui/code-block-player";
 import { RpgAudioSidebarView } from "./ui/sidebar-view";
-import { InsertTrackModal } from "./ui/insert-track-modal";
 import { setCustomPresets, getDefaultWetLevel } from "./reverb-engine";
+import { openRenderedAudioBlockEditor, registerAudioBlockCommands } from "./commands/audio-block-commands";
 
 export default class RpgAudioPlugin extends Plugin {
 	settings: RpgAudioSettings;
@@ -32,6 +32,9 @@ export default class RpgAudioPlugin extends Plugin {
 		this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new RpgAudioSidebarView(leaf, this));
 
 		this.registerMarkdownCodeBlockProcessor("rpg-audio", (source, el, ctx) => {
+			const editBlock = () => {
+				void openRenderedAudioBlockEditor(this, el, ctx, source);
+			};
 			const result = parseAudioBlockDetailed(source, {
 				playlistCrossfadeDuration: this.settings.defaultPlaylistCrossfade,
 				volumeFadeTarget: this.settings.defaultVolumeFadeTarget,
@@ -42,10 +45,10 @@ export default class RpgAudioPlugin extends Plugin {
 				: [];
 			const errors = getAudioBlockErrors(result, missingFiles, this.settings.validateAudioBlocks);
 			if (!result.def || errors.length > 0) {
-				renderAudioBlockErrors(el, errors);
+				renderAudioBlockErrors(el, errors, editBlock);
 				return;
 			}
-			const player = new RpgAudioCodeBlockPlayer(el, this.audioManager, result.def);
+			const player = new RpgAudioCodeBlockPlayer(el, this.audioManager, result.def, editBlock);
 			ctx.addChild(player);
 		});
 
@@ -66,15 +69,7 @@ export default class RpgAudioPlugin extends Plugin {
 			callback: () => this.audioManager.stopAll(),
 		});
 
-		this.addCommand({
-			id: "insert-track",
-			name: "Insert audio track",
-			editorCallback: (editor) => {
-				new InsertTrackModal(this.app, this.settings.audioFolder, (codeBlock) => {
-					editor.replaceRange(codeBlock + "\n", editor.getCursor());
-				}).open();
-			},
-		});
+		registerAudioBlockCommands(this);
 
 		this.addSettingTab(new RpgAudioSettingTab(this.app, this));
 
@@ -88,7 +83,7 @@ export default class RpgAudioPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<RpgAudioSettings>);
+		this.settings = normalizeRpgAudioSettings(await this.loadData());
 	}
 
 	async saveSettings() {

@@ -17,7 +17,7 @@ Turn your session prep notes into a soundboard — ambience, music, and sound ef
 - **Fade controls** — fade in/out individual groups (e.g. fade out all ambience) or everything at once, with red/green direction feedback while volume changes
 - **Visible configuration errors** — invalid settings and missing audio files replace the player with a red error panel that identifies each problem
 - **Autoplay** — mark tracks with `autoplay: true` and they start playing as soon as their note opens or is shown in a hover popover. Gated by a sidebar toggle so prep stays silent and you only flip it on at the start of a session
-- **Insert track command** — a GUI modal for building `rpg-audio` code blocks without remembering the syntax
+- **Audio block editor** — add or safely edit single-file and playlist blocks through a validated GUI without remembering the syntax
 - **Debug overlay** — optional sidebar toggle that shows each track's last event and the active scope set, useful when audio behaves unexpectedly
 
 ## Use cases
@@ -42,6 +42,10 @@ file: audio/tavern.mp3
 ````
 
 3. Switch to reading mode — hit play
+
+You can also run **Add audio block**, or use the editor context menu, to choose local files and configure the block visually. Use the emoji button beside **Name** to browse more than 1,900 Unicode 17 emojis by category or search case-insensitively by CLDR name and keywords such as `music`, `sword`, or `rain`. The picker includes an RPG-focused category with additional tabletop aliases and a vault-specific **Recently used** list. Emoji data is bundled with the plugin, so browsing and search work offline and never contact an emoji service. Selecting an emoji inserts it at the current caret without replacing the existing name, and the picker stays open for rapid repeated insertion. Use arrow keys, Home, End, Enter, and Space to navigate; Escape clears an active search first and then closes the picker, which also closes when selecting outside it. The audio picker groups matching files into labeled, collapsible vault-folder sections, including nested categories such as `Music/Combat`, while retaining search and multi-selection. Select a folder heading, or focus it and press Enter or Space, to expand or collapse its files. When the cursor is inside an existing block, run **Edit audio block**. Rendered players expose the same edit action from their More actions menu.
+
+The editor automatically changes from Single file to Playlist when a second file is selected. Playlist-only settings are retained while the editor remains open but are omitted if the block is saved with one file. Missing files, duplicate IDs, invalid timestamps, unsafe source syntax, and stale-source conflicts block saving instead of overwriting data.
 
 ## Common patterns
 
@@ -313,12 +317,16 @@ Prefix a token with `!` to exclude it. Example: `stops: ambient, !crowd-ambient`
 - **Default playlist crossfade** — seconds of overlap used by playlist blocks that omit `crossfade` (default: 0s / disabled). An explicit per-block `crossfade` always overrides this.
 - **Default volume fade target** — target volume from `0` to `1` used by blocks that omit `volume-fade-to` (default: `0.5`). Only takes effect when the default volume fade duration is above 0. An explicit per-block `volume-fade-to` always overrides this.
 - **Default volume fade duration** — seconds used by blocks that omit `volume-fade-duration` (default: 0s / disabled). An explicit per-block `volume-fade-duration` always overrides this.
+- **New audio block defaults** — initial type, loop, random order, autoplay, playlist end action, fade-in duration, fade-out duration, and volume copied into newly authored blocks. Existing blocks do not inherit these authoring defaults and keep their saved behavior.
 
 ## Commands
 
 - **Toggle audio sidebar** — show or hide the audio sidebar panel.
 - **Stop all audio** — stop all currently playing tracks.
-- **Insert audio track** — opens a modal to build and insert an `rpg-audio` code block at the cursor.
+- **Add audio block** (`insert-track`) — opens the visual editor and inserts a validated `rpg-audio` block at the cursor. The original command ID remains stable for compatibility.
+- **Edit audio block** — available when the cursor or selection is inside an `rpg-audio` fence; replaces that exact block through the editor so Undo works normally.
+
+The editor context menu shows **Edit audio block…** inside a block and **Add audio block…** elsewhere. Rendered inline players also provide **Edit audio block…** under More actions. If the source moves or changes while an edit modal is open, saving is blocked and the latest source is left untouched.
 
 ## Caveats
 
@@ -359,6 +367,8 @@ That said, the code is yours to do with as you please (see [License](#license)):
 - **Issues** — you're welcome to report bugs, but self-service fixes via PRs are more likely to get addressed.
 - **Local development** — clone the repo into your vault's `.obsidian/plugins/rpg-audio/` folder, run `npm install`, then `npm run dev` to build with hot reload.
 
+The emoji catalog is generated from the exact `emojibase-data` version pinned in `package-lock.json`. Run `npm run generate:emoji` after intentionally updating that dependency or `scripts/emoji-rpg-aliases.json`. Normal test, development, and production commands verify that the committed generated catalog is current; they do not download data at runtime.
+
 ## AI disclaimer
 
 This plugin was built with the help of AI (Claude). If that matters to you, now you know.
@@ -366,3 +376,5 @@ This plugin was built with the help of AI (Claude). If that matters to you, now 
 ## License
 
 [0-BSD](LICENSE)
+
+Bundled emoji metadata has separate attribution in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

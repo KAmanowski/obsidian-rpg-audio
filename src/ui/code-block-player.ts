@@ -1,4 +1,4 @@
-import {MarkdownRenderChild} from "obsidian";
+import {MarkdownRenderChild, Menu, setIcon} from "obsidian";
 import {AudioManager} from "../audio-manager";
 import {AudioTrackDef, PlayState, EVENT_TRACK_CHANGED, EVENT_TIME_UPDATE, DETACH_POLL_INTERVAL_MS} from "../types";
 import {parseAudioBlock} from "../audio-block-parser";
@@ -30,13 +30,23 @@ export function formatTimestamp(secs: number): string {
 
 export {parseAudioBlock};
 
-export function renderAudioBlockErrors(containerEl: HTMLElement, errors: string[]): void {
+export function renderAudioBlockErrors(containerEl: HTMLElement, errors: string[], onEdit?: () => void): void {
 	containerEl.empty();
 	const errorEl = containerEl.createDiv({cls: "rpg-audio-error"});
 	errorEl.setAttribute("role", "alert");
-	errorEl.createDiv({cls: "rpg-audio-error-title", text: "RPG Audio configuration error"});
-	const list = errorEl.createEl("ul", {cls: "rpg-audio-error-list"});
-	for (const error of errors) list.createEl("li", {text: error});
+	if (errors.length === 1) {
+		errorEl.createDiv({cls: "rpg-audio-error-message", text: errors[0]});
+	} else {
+		const list = errorEl.createEl("ul", {cls: "rpg-audio-error-list"});
+		for (const error of errors) list.createEl("li", {text: error});
+	}
+	if (onEdit) {
+		const editButton = errorEl.createEl("button", {cls: "rpg-audio-error-edit"});
+		const icon = editButton.createSpan();
+		setIcon(icon, "pencil");
+		editButton.createSpan({text: "Edit audio block…"});
+		editButton.addEventListener("click", onEdit);
+	}
 }
 
 export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
@@ -50,11 +60,13 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 	private eventRef: (() => void) | null = null;
 	private timeUpdateRef: (() => void) | null = null;
 	private autoplayTimer: number | null = null;
+	private readonly onEdit: (() => void) | null;
 
-	constructor(containerEl: HTMLElement, manager: AudioManager, def: AudioTrackDef) {
+	constructor(containerEl: HTMLElement, manager: AudioManager, def: AudioTrackDef, onEdit?: () => void) {
 		super(containerEl);
 		this.manager = manager;
 		this.def = def;
+		this.onEdit = onEdit ?? null;
 	}
 
 	onload(): void {
@@ -158,6 +170,22 @@ export class RpgAudioCodeBlockPlayer extends MarkdownRenderChild {
 			(v) => { this.ensureActive(); this.manager.setTrackVolume(this.def.id, v); },
 			initialVolume,
 		);
+
+		if (this.onEdit) {
+			const moreButton = topRow.createEl("button", {
+				cls: "rpg-audio-more-actions clickable-icon",
+				attr: {"aria-label": "More actions", title: "More actions"},
+			});
+			setIcon(moreButton, "more-vertical");
+			moreButton.addEventListener("click", event => {
+				const menu = new Menu();
+				menu.addItem(item => item
+					.setTitle("Edit audio block…")
+					.setIcon("pencil")
+					.onClick(() => this.onEdit?.()));
+				menu.showAtMouseEvent(event);
+			});
+		}
 
 		if (this.def.entries.length > 1) {
 			this.playlistElements = createPlaylistDropdown(el, this.def.entries, {
