@@ -10,6 +10,16 @@ import {
 	validateAudioBlockForm,
 } from "../audio-block-form";
 import {findAudioFile} from "../audio-file-resolver";
+import {
+	AudioBlockTypeDefinition,
+	BUILTIN_AUDIO_BLOCK_TYPES,
+	DEFAULT_CUSTOM_AUDIO_BLOCK_TYPE_COLOR,
+	findCustomAudioBlockType,
+	getAudioBlockTypeColor,
+	isBuiltinAudioBlockType,
+	normalizeAudioBlockTypeColor,
+	upsertCustomAudioBlockType,
+} from "../audio-block-types";
 import {PlaylistEndAction} from "../types";
 import {AudioFilePickerModal} from "./audio-file-picker-modal";
 import {EmojiPicker} from "./emoji-picker";
@@ -27,6 +37,8 @@ export interface AudioBlockModalOptions {
 	parserDefaults: AudioBlockDefaults;
 	duplicateIds: string[];
 	hydrationIssues?: string[];
+	customTypes: AudioBlockTypeDefinition[];
+	onSaveCustomType: (definition: AudioBlockTypeDefinition, previousName?: string) => Promise<void> | void;
 	onSave: (source: string) => Promise<AudioBlockSaveResult> | AudioBlockSaveResult;
 }
 
@@ -57,8 +69,6 @@ class DiscardAudioBlockModal extends Modal {
 	}
 }
 
-const STANDARD_TYPES = new Set(["music", "sfx", "ambience", "playlist"]);
-
 export class AudioBlockModal extends Modal {
 	private readonly options: AudioBlockModalOptions;
 	private readonly state: AudioBlockFormState;
@@ -77,12 +87,22 @@ export class AudioBlockModal extends Modal {
 	private summaryEl: HTMLElement | null = null;
 	private previewEl: HTMLElement | null = null;
 	private emojiPicker: EmojiPicker | null = null;
+	private customTypes: AudioBlockTypeDefinition[];
+	private customTypeColor = DEFAULT_CUSTOM_AUDIO_BLOCK_TYPE_COLOR;
+	private customTypeOriginalName: string | undefined;
 
 	constructor(app: App, options: AudioBlockModalOptions) {
 		super(app);
 		this.options = options;
 		this.state = options.state;
 		this.idManuallyEdited = options.mode === "edit" || !!options.state.id;
+		this.customTypes = options.customTypes.map(type => ({...type}));
+		const initialType = options.state.type.mode === "value" ? options.state.type.value : "";
+		const initialCustom = findCustomAudioBlockType(this.customTypes, initialType);
+		if (initialCustom) {
+			this.customTypeColor = initialCustom.color;
+			this.customTypeOriginalName = initialCustom.name;
+		}
 	}
 
 	onOpen(): void {
@@ -160,34 +180,96 @@ export class AudioBlockModal extends Modal {
 
 		const setting = new Setting(section).setName("Type").setDesc("Display badge/grouping label. Automatic follows the file count.");
 		setting.settingEl.dataset.audioField = "type";
-		const controls = setting.controlEl.createDiv({cls: "rpg-audio-segmented", attr: {role: "group", "aria-label": "Audio block type"}});
+		const controls = setting.controlEl.createDiv({cls: "rpg-audio-segmented rpg-audio-type-selector", attr: {role: "group", "aria-label": "Audio block type"}});
 		const currentValue = this.state.type.mode === "value" ? this.state.type.value : "";
-		const selected = this.state.type.mode === "inherit" ? "automatic" : STANDARD_TYPES.has(currentValue) ? currentValue : "custom";
-		for (const [value, label] of [["automatic", "Automatic"], ["music", "Music"], ["sfx", "SFX"], ["ambience", "Ambience"], ["playlist", "Playlist"], ["custom", "Custom"]] as const) {
-			const button = controls.createEl("button", {text: label, cls: selected === value ? "is-selected" : ""});
-			button.setAttribute("aria-pressed", String(selected === value));
+		const currentKey = currentValue.trim().toLocaleLowerCase("en");
+		const builtin = BUILTIN_AUDIO_BLOCK_TYPES.find(type => type.name === currentKey);
+		const savedCustom = findCustomAudioBlockType(this.customTypes, currentValue);
+		const selected = this.state.type.mode === "inherit"
+			? "automatic"
+			: builtin?.name ?? (savedCustom ? `custom:${savedCustom.name.toLocaleLowerCase("en")}` : "draft-custom");
+		const automaticType = this.state.entries.length > 1 ? "playlist" : "sfx";
+		const choices: Array<{key: string; label: string; color: string; type?: AudioBlockTypeDefinition}> = [
+			{key: "automatic", label: "Automatic", color: getAudioBlockTypeColor(automaticType)},
+			...BUILTIN_AUDIO_BLOCK_TYPES.map(type => ({
+				key: type.name,
+				label: type.name === "sfx" ? "SFX" : type.name.charAt(0).toUpperCase() + type.name.slice(1),
+				color: type.color,
+				type,
+			})),
+			...this.customTypes.map(type => ({
+				key: `custom:${type.name.toLocaleLowerCase("en")}`,
+				label: type.name,
+				color: type.color,
+				type,
+			})),
+		];
+		if (selected === "draft-custom" && currentValue.trim()) {
+			choices.push({key: "draft-custom", label: currentValue.trim(), color: this.customTypeColor});
+		}
+		choices.push({key: "new-custom", label: "Custom…", color: this.customTypeColor});
+
+		let selectedButton: HTMLButtonElement | null = null;
+		for (const choice of choices) {
+			const choiceSelected = selected === choice.key || (selected === "draft-custom" && choice.key === "new-custom" && !currentValue.trim());
+			const button = controls.createEl("button", {
+				text: choice.label,
+				cls: choiceSelected ? "is-selected" : "",
+				attr: {type: "button"},
+			});
+			button.style.setProperty("--rpg-audio-type-color", choice.color);
+			button.setAttribute("aria-pressed", String(choiceSelected));
+			if (choiceSelected) selectedButton = button;
 			button.addEventListener("click", () => {
 				this.markChanged("type");
-				this.state.type = value === "automatic"
-					? {mode: "inherit"}
-					: {mode: "value", value: value === "custom" ? (STANDARD_TYPES.has(currentValue) ? "" : currentValue) : value};
+				if (choice.key === "automatic") {
+					this.state.type = {mode: "inherit"};
+				} else if (choice.key === "new-custom") {
+					this.state.type = {mode: "value", value: ""};
+					this.customTypeColor = DEFAULT_CUSTOM_AUDIO_BLOCK_TYPE_COLOR;
+					this.customTypeOriginalName = undefined;
+				} else if (choice.type) {
+					this.state.type = {mode: "value", value: choice.type.name};
+					if (!isBuiltinAudioBlockType(choice.type.name)) {
+						this.customTypeColor = choice.type.color;
+						this.customTypeOriginalName = choice.type.name;
+					}
+				}
 				this.rerender();
 			});
 		}
-		if (selected === "custom") {
-			const input = section.createEl("input", {
-				type: "text",
-				value: currentValue,
-				placeholder: "Custom type",
-				cls: "rpg-audio-custom-type-input",
-				attr: {"aria-label": "Custom audio block type"},
+		if (this.state.type.mode === "value" && !builtin) {
+			const customSetting = new Setting(section)
+				.setName("Custom type")
+				.setDesc("Name and color are saved for future audio blocks when this block is saved.");
+			customSetting.settingEl.addClass("rpg-audio-custom-type-setting");
+			customSetting.addText(text => {
+				text.setValue(currentValue).setPlaceholder("Custom type").onChange(value => {
+					this.state.type = {mode: "value", value};
+					selectedButton?.setText(value.trim() || "Custom…");
+					this.markChanged("type");
+				});
+				text.inputEl.setAttribute("aria-label", "Custom audio block type");
 			});
-			input.addEventListener("input", () => {
-				this.state.type = {mode: "value", value: input.value};
+			customSetting.addColorPicker(picker => picker.setValue(this.customTypeColor).onChange(value => {
+				this.customTypeColor = normalizeAudioBlockTypeColor(value);
+				selectedButton?.style.setProperty("--rpg-audio-type-color", this.customTypeColor);
 				this.markChanged("type");
-			});
+			}));
+			customSetting.controlEl.querySelector<HTMLInputElement>('input[type="color"]')
+				?.setAttribute("aria-label", "Custom audio block type color");
 		}
 		this.errorEl(section, "type");
+	}
+
+	private async persistSelectedCustomType(): Promise<void> {
+		if (this.state.type.mode !== "value" || isBuiltinAudioBlockType(this.state.type.value)) return;
+		const name = this.state.type.value.trim();
+		if (!name) return;
+		const definition = {name, color: this.customTypeColor};
+		await this.options.onSaveCustomType(definition, this.customTypeOriginalName);
+		this.customTypes = upsertCustomAudioBlockType(this.customTypes, definition, this.customTypeOriginalName);
+		this.customTypeOriginalName = name;
 	}
 
 	private renderNameSetting(section: HTMLElement): void {
@@ -538,6 +620,7 @@ export class AudioBlockModal extends Modal {
 		this.saving = true;
 		this.refreshValidation();
 		try {
+			await this.persistSelectedCustomType();
 			const result = await this.options.onSave(validation.serialized);
 			if (!result.ok) {
 				this.saveIssue = result.message ?? "The source changed while this editor was open. Reopen the block and review the latest source.";

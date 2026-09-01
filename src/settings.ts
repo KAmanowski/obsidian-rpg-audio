@@ -13,6 +13,11 @@ import {
 	setCustomPresets,
 } from "./reverb-engine";
 import {preserveScrollPosition} from "./ui/scroll-preservation";
+import {
+	AudioBlockTypeDefinition,
+	BUILTIN_AUDIO_BLOCK_TYPES,
+	normalizeCustomAudioBlockTypes,
+} from "./audio-block-types";
 
 export interface RpgAudioSettings {
 	audioFolder: string;
@@ -37,6 +42,7 @@ export interface RpgAudioSettings {
 	defaultAudioBlockFadeIn: number;
 	defaultAudioBlockFadeOut: number;
 	defaultAudioBlockVolume: number;
+	customAudioBlockTypes: AudioBlockTypeDefinition[];
 	showDebugInfo: boolean;
 	reverbPreset: string;
 	reverbWet: number;
@@ -66,6 +72,7 @@ export const DEFAULT_SETTINGS: RpgAudioSettings = {
 	defaultAudioBlockFadeIn: 0,
 	defaultAudioBlockFadeOut: 0,
 	defaultAudioBlockVolume: 1,
+	customAudioBlockTypes: [],
 	showDebugInfo: false,
 	reverbPreset: "dry",
 	reverbWet: 0.35,
@@ -103,6 +110,11 @@ export function normalizeRpgAudioSettings(data: unknown): RpgAudioSettings {
 	settings.defaultAudioBlockFadeIn = finiteInRange(raw.defaultAudioBlockFadeIn, 0, 0, 120);
 	settings.defaultAudioBlockFadeOut = finiteInRange(raw.defaultAudioBlockFadeOut, 0, 0, 120);
 	settings.defaultAudioBlockVolume = finiteInRange(raw.defaultAudioBlockVolume, 1, 0, 1);
+	settings.customAudioBlockTypes = normalizeCustomAudioBlockTypes(raw.customAudioBlockTypes);
+	const defaultTypeKey = settings.defaultAudioBlockType.toLocaleLowerCase("en");
+	settings.defaultAudioBlockType = BUILTIN_AUDIO_BLOCK_TYPES.find(type => type.name === defaultTypeKey)?.name
+		?? settings.customAudioBlockTypes.find(type => type.name.toLocaleLowerCase("en") === defaultTypeKey)?.name
+		?? settings.defaultAudioBlockType;
 	return settings;
 }
 
@@ -293,17 +305,22 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Default type")
 			.setDesc("Display badge/grouping type selected when a new block opens. Automatic resolves from the selected file count.")
-			.addDropdown(dropdown => dropdown
-				.addOption("", "Automatic")
-				.addOption("music", "Music")
-				.addOption("sfx", "SFX")
-				.addOption("ambience", "Ambience")
-				.addOption("playlist", "Playlist")
-				.setValue(this.plugin.settings.defaultAudioBlockType)
-				.onChange(async value => {
+			.addDropdown(dropdown => {
+				dropdown.addOption("", "Automatic");
+				for (const type of BUILTIN_AUDIO_BLOCK_TYPES) {
+					dropdown.addOption(type.name, type.name === "sfx" ? "SFX" : type.name.charAt(0).toUpperCase() + type.name.slice(1));
+				}
+				for (const type of this.plugin.settings.customAudioBlockTypes) dropdown.addOption(type.name, type.name);
+				const current = this.plugin.settings.defaultAudioBlockType;
+				if (current && !BUILTIN_AUDIO_BLOCK_TYPES.some(type => type.name === current)
+					&& !this.plugin.settings.customAudioBlockTypes.some(type => type.name === current)) {
+					dropdown.addOption(current, current);
+				}
+				dropdown.setValue(current).onChange(async value => {
 					this.plugin.settings.defaultAudioBlockType = value;
 					await this.plugin.saveSettings();
-				}));
+				});
+			});
 
 		new Setting(containerEl)
 			.setName("Loop new blocks")

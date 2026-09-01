@@ -24,6 +24,7 @@ import {
 	formatAudioBlockForFence,
 	formatAudioBlockInsertion,
 } from "../audio-block-source";
+import {AudioBlockTypeDefinition, upsertCustomAudioBlockType} from "../audio-block-types";
 import {AudioBlockModal} from "../ui/audio-block-modal";
 
 function sourceContextLabel(source: string, block: AudioBlockFence): string {
@@ -95,6 +96,22 @@ function serializedId(source: string): string {
 	return parseAudioBlockDetailed(body).def?.id ?? "";
 }
 
+async function saveCustomAudioBlockType(
+	plugin: RpgAudioPlugin,
+	definition: AudioBlockTypeDefinition,
+	previousName?: string,
+): Promise<void> {
+	plugin.settings.customAudioBlockTypes = upsertCustomAudioBlockType(
+		plugin.settings.customAudioBlockTypes,
+		definition,
+		previousName,
+	);
+	if (previousName && plugin.settings.defaultAudioBlockType.toLocaleLowerCase("en") === previousName.toLocaleLowerCase("en")) {
+		plugin.settings.defaultAudioBlockType = definition.name;
+	}
+	await plugin.saveSettings();
+}
+
 function openEditorModal(
 	plugin: RpgAudioPlugin,
 	editor: Editor,
@@ -117,6 +134,8 @@ function openEditorModal(
 		parserDefaults: defaults,
 		duplicateIds,
 		hydrationIssues: hydrated.issues,
+		customTypes: plugin.settings.customAudioBlockTypes,
+		onSaveCustomType: (definition, previousName) => saveCustomAudioBlockType(plugin, definition, previousName),
 		onSave: source => {
 			const current = editor.getValue();
 			if (block) {
@@ -229,6 +248,8 @@ function openRenderedBlockModal(
 		parserDefaults: defaults,
 		duplicateIds: collectAudioBlockIds(initialSource, block),
 		hydrationIssues: hydrated.issues,
+		customTypes: plugin.settings.customAudioBlockTypes,
+		onSaveCustomType: (definition, previousName) => saveCustomAudioBlockType(plugin, definition, previousName),
 		onSave: async source => {
 			let conflict = "";
 			await plugin.app.vault.process(file, current => {

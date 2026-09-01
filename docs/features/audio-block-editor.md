@@ -190,21 +190,22 @@ Acceptance requires valid canonical round trips for every supported setting, cor
 - File-picker selectors now communicate cardinality through their native control type: replacement mode (`multiple: false`) uses one named radio group, while add-files mode and the default configuration use independent checkboxes. Selection state, folder collapse state, search, and scroll preservation are unchanged.
 - Expanded the Name emoji picker following Claude's Android-keyboard-style board. Its catalog is now generated from the exact lockfile-pinned `emojibase-data` 17.0.0 package: 1,914 standard Unicode 17/CLDR entries across nine standard groups plus 40 curated RPG & Audio shortcuts with tabletop aliases. The generated catalog and pre-normalized English search metadata are bundled into `main.js`; runtime browsing performs no network requests. A deterministic generator and stale-data check protect updates, while the existing 24-item vault-scoped Recently used list, popup/bottom-sheet layout, grouped search, keyboard navigation, caret insertion, and cleanup behavior remain unchanged. Skin-tone variants are not yet exposed as separate grid entries because doing so requires a dedicated accessible variant interaction rather than thousands of additional category buttons.
 - Restyled boolean ToggleComponents only inside the audio-block editor to match Claude's switch design and override conflicting theme geometry: 32×18px desktop with a 14px thumb, 36×20px mobile with a 16px thumb, neutral grey off, green on, white active thumb, visible focus ring, disabled treatment, light-theme mapping, and reduced-motion handling.
+- Colored every audio-block type selector option with the existing type palette, including the selected state; Automatic reflects the type derived from the current file count. Added settings-backed custom type definitions (`name` plus validated six-digit hex color), displayed saved definitions as reusable selector buttons, and provided an Obsidian-native text/color editor for the active custom type. Custom definitions are normalized during settings load and committed when the block saves, so cancellation remains non-mutating; renaming also updates a matching new-block default. Saved custom definitions are available in the global **Default type** dropdown after reload.
 
 ### Files changed
 
-- Added: `src/audio-block-form.ts`, `src/audio-block-source.ts`, `src/audio-library.ts`, `src/emoji-picker.ts`, `src/data/emoji-data.generated.ts`, `src/commands/audio-block-commands.ts`, `src/ui/audio-block-modal.ts`, `src/ui/audio-file-picker-modal.ts`, `src/ui/emoji-picker.ts`, `src/ui/scroll-preservation.ts`, `scripts/generate-emoji-data.mjs`, `scripts/emoji-rpg-aliases.json`, `tests/audio-block-form.test.ts`, `tests/audio-block-source.test.ts`, `tests/audio-library.test.ts`, `tests/emoji-picker.test.ts`, `tests/scroll-preservation.test.ts`, `THIRD_PARTY_NOTICES.md`.
+- Added: `src/audio-block-form.ts`, `src/audio-block-source.ts`, `src/audio-block-types.ts`, `src/audio-library.ts`, `src/emoji-picker.ts`, `src/data/emoji-data.generated.ts`, `src/commands/audio-block-commands.ts`, `src/ui/audio-block-modal.ts`, `src/ui/audio-file-picker-modal.ts`, `src/ui/emoji-picker.ts`, `src/ui/scroll-preservation.ts`, `scripts/generate-emoji-data.mjs`, `scripts/emoji-rpg-aliases.json`, `tests/audio-block-form.test.ts`, `tests/audio-block-source.test.ts`, `tests/audio-block-types.test.ts`, `tests/audio-library.test.ts`, `tests/emoji-picker.test.ts`, `tests/scroll-preservation.test.ts`, `THIRD_PARTY_NOTICES.md`.
 - Updated: `src/audio-block-parser.ts`, `src/main.ts`, `src/settings.ts`, `src/ui/code-block-player.ts`, `styles.css`, `README.md`, `package.json`, `package-lock.json`, `eslint.config.mts`.
 - Removed: `src/ui/insert-track-modal.ts`.
 
 ### Verification
 
 - `npm run check:emoji-data`: passes; the committed generated catalog exactly matches pinned Emojibase 17.0.0 and the curated RPG aliases.
-- `npm test`: 62 tests pass, including dataset provenance, category coverage, CLDR/RPG search, and standard-catalog uniqueness.
+- `npm test`: 65 tests pass, including custom-type normalization/upsert/color resolution and emoji dataset provenance, category coverage, CLDR/RPG search, and standard-catalog uniqueness.
 - `npm run lint`: passes.
 - `npm run build`: passes, including `tsc -noEmit -skipLibCheck` and production esbuild.
 - `git diff --check`: passes.
-- Production `main.js` is 270,588 bytes with the bundled offline catalog, up from the pre-catalog 152,246 bytes. Removing duplicated labels/tags from generated search metadata reduced the first full-catalog build from 314,638 bytes.
+- Production `main.js` is 274,796 bytes with the bundled offline catalog and persisted custom-type selector, up from the pre-catalog 152,246 bytes. Removing duplicated labels/tags from generated search metadata reduced the first full-catalog build from 314,638 bytes.
 
 ### Unresolved and exact next steps
 
@@ -222,3 +223,12 @@ Acceptance requires valid canonical round trips for every supported setting, cor
 - Added regression tests for locating, hydrating, and rewriting quoted blocks, resolving relative nested-section line numbers through rendered-body matching, and distinguishing identical block bodies through surrounding section text. Full test count is now 47; tests, lint, build, and `git diff --check` pass.
 - Follow-up B5i testing confirmed Obsidian can return section line numbers relative to a nested callout rather than the outer note. Rendered editing now first uses line ranges, then safely falls back to the processor's exact rendered body and `MarkdownSectionInformation.text`; it still aborts if those signals leave multiple candidates.
 - A further B5i path returned `null` from `getSectionInfo()` entirely. Rendered editing no longer aborts in that case: a unique exact-body match opens directly; repeated identical matches open a searchable location chooser labeled with source line and nearest heading/callout. The chooser is required for the two `church-ambience` occurrences and prevents guessing.
+
+### Main-branch conflict resolution (2026-09-02)
+
+- The repository's primary branch is `main`; no `master` ref exists. Fetched and merged `origin/main` at `33ac5b1` into `feature/audio-block-ui` with `--no-commit` so the result remains reviewable.
+- Resolved content conflicts in `README.md`, `src/audio-block-parser.ts`, `src/main.ts`, `src/settings.ts`, `src/ui/code-block-player.ts`, and `styles.css`, plus the modify/delete conflict for `src/ui/insert-track-modal.ts`.
+- The `main` playlist/file-check changes were already present through prerequisite merge `333ba8d`. Retained the feature-side supersets: exported parser helpers used by form validation, rendered/editor edit entry points, authoring defaults, More actions, responsive editor styling, and the intentional removal of the obsolete insert-only modal. Preserved Git's clean auto-merges in the engine, playlist utilities/dropdown/tests, types, and sidebar.
+- Temporarily stashed the uncommitted custom-type selector work, reapplied it after resolving the branch merge, and retained `stash@{0}` as a safety copy until the pending merge is committed.
+- Post-resolution verification: `npm test` passes 65 tests; `npm run lint`, `npm run build` (including TypeScript), `npm run check:emoji-data`, `git diff --check`, and the unmerged-path check all pass.
+- Exact next step: review and commit the already-resolved merge, then drop the named safety stash. No push has been performed.

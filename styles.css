@@ -1532,9 +1532,36 @@ button.rpg-audio-emoji-tab:focus-visible {
 	color: var(--text-normal);
 }
 
-.rpg-audio-custom-type-input {
-	width: 100%;
+.rpg-audio-type-selector button {
+	max-width: 160px;
+	overflow: hidden;
+	border-color: color-mix(in srgb, var(--rpg-audio-type-color) 42%, var(--background-modifier-border));
+	background: color-mix(in srgb, var(--rpg-audio-type-color) 7%, var(--background-secondary));
+	color: var(--rpg-audio-type-color);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rpg-audio-type-selector button:hover {
+	border-color: color-mix(in srgb, var(--rpg-audio-type-color) 68%, var(--background-modifier-border));
+	background: color-mix(in srgb, var(--rpg-audio-type-color) 12%, var(--background-secondary));
+}
+
+.rpg-audio-type-selector button.is-selected {
+	border-color: var(--rpg-audio-type-color);
+	background: color-mix(in srgb, var(--rpg-audio-type-color) 22%, var(--background-secondary));
+	color: var(--rpg-audio-type-color);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rpg-audio-type-color) 28%, transparent);
+}
+
+.rpg-audio-custom-type-setting {
 	margin-top: 6px;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.rpg-audio-custom-type-setting .setting-item-control input[type="text"] {
+	min-width: 160px;
 }
 
 .rpg-audio-files-heading {
