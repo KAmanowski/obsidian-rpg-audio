@@ -238,4 +238,6 @@ Acceptance requires valid canonical round trips for every supported setting, cor
 - Bumped the release version from `0.4.0` to `0.5.0` in `package.json`, the package-lock root/package records, and `manifest.json`.
 - Added the required `"0.5.0": "1.5.7"` entry to `versions.json`; the minimum supported Obsidian version is unchanged.
 - `npm run build` passes at version 0.5.0, including generated emoji-data validation, TypeScript checking, and the production esbuild bundle. All four JSON release/version files parse and report consistent values; `git diff --check` passes.
-- No release commit, tag, push, or GitHub release was created.
+- Committed the release metadata as `f8884b8` (**Release 0.5.0**), pushed `main`, and pushed annotated tag `0.5.0` without a `v` prefix.
+- GitHub Actions release run `33686166203` completed successfully and published [release 0.5.0](https://github.com/KAmanowski/obsidian-rpg-audio/releases/tag/0.5.0) as a non-draft, non-prerelease release.
+- Verified the release contains the required individual assets: `main.js` (274,796 bytes), `manifest.json` (322 bytes), and `styles.css` (44,723 bytes).
