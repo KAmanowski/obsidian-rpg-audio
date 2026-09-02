@@ -231,4 +231,11 @@ Acceptance requires valid canonical round trips for every supported setting, cor
 - The `main` playlist/file-check changes were already present through prerequisite merge `333ba8d`. Retained the feature-side supersets: exported parser helpers used by form validation, rendered/editor edit entry points, authoring defaults, More actions, responsive editor styling, and the intentional removal of the obsolete insert-only modal. Preserved Git's clean auto-merges in the engine, playlist utilities/dropdown/tests, types, and sidebar.
 - Temporarily stashed the uncommitted custom-type selector work, reapplied it after resolving the branch merge, and retained `stash@{0}` as a safety copy until the pending merge is committed.
 - Post-resolution verification: `npm test` passes 65 tests; `npm run lint`, `npm run build` (including TypeScript), `npm run check:emoji-data`, `git diff --check`, and the unmerged-path check all pass.
-- Exact next step: review and commit the already-resolved merge, then drop the named safety stash. No push has been performed.
+- The resolved feature was subsequently merged to `main` as `0cccfd9` (**Added Settings UI (#12)**). The named safety stash remains available and can be dropped after release confidence checks.
+
+### Release preparation (2026-09-02)
+
+- Bumped the release version from `0.4.0` to `0.5.0` in `package.json`, the package-lock root/package records, and `manifest.json`.
+- Added the required `"0.5.0": "1.5.7"` entry to `versions.json`; the minimum supported Obsidian version is unchanged.
+- `npm run build` passes at version 0.5.0, including generated emoji-data validation, TypeScript checking, and the production esbuild bundle. All four JSON release/version files parse and report consistent values; `git diff --check` passes.
+- No release commit, tag, push, or GitHub release was created.

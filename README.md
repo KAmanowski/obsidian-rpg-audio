@@ -348,12 +348,12 @@ The editor context menu shows **Edit audio block…** inside a block and **Add a
 
 1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin
 2. In BRAT settings, click **Add Beta Plugin**
-3. Enter `knorrli/obsidian-rpg-audio`
+3. Enter `KAmanowski/obsidian-rpg-audio`
 4. Enable **RPG Audio** in Settings > Community Plugins
 
 ### Manual
 
-1. Download `main.js`, `styles.css`, and `manifest.json` from the [latest release](https://github.com/knorrli/obsidian-rpg-audio/releases/latest)
+1. Download `main.js`, `styles.css`, and `manifest.json` from the [latest release](https://github.com/KAmanowski/obsidian-rpg-audio/releases/latest)
 2. Create a folder at `.obsidian/plugins/rpg-audio/` in your vault
 3. Copy the three files into that folder
 4. Enable **RPG Audio** in Settings > Community Plugins
