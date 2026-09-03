@@ -1,5 +1,6 @@
-import {App, Modal, setIcon, TFile} from "obsidian";
+import {App, Modal, Notice, setIcon, TFile} from "obsidian";
 import {audioFileSelectionInputType, groupAudioFilesByFolder} from "../audio-library";
+import {AudioPreviewController} from "../audio-preview";
 import {preserveScrollPosition} from "./scroll-preservation";
 
 export const AUDIO_EXTENSIONS = new Set(["mp3", "wav", "ogg", "flac", "m4a", "webm", "aac"]);
@@ -27,6 +28,11 @@ export class AudioFilePickerModal extends Modal {
 	private listEl: HTMLElement | null = null;
 	private countEl: HTMLElement | null = null;
 	private submitButton: HTMLButtonElement | null = null;
+	private readonly previewButtons = new Map<string, {button: HTMLButtonElement; name: string}>();
+	private readonly previewController = new AudioPreviewController(
+		activePath => this.updatePreviewButtons(activePath),
+		path => new Notice(`Could not preview "${path}".`),
+	);
 
 	constructor(app: App, options: AudioFilePickerOptions) {
 		super(app);
@@ -71,6 +77,8 @@ export class AudioFilePickerModal extends Modal {
 	}
 
 	onClose(): void {
+		this.previewController.dispose();
+		this.previewButtons.clear();
 		this.contentEl.empty();
 	}
 
@@ -89,6 +97,7 @@ export class AudioFilePickerModal extends Modal {
 
 	private renderFileList(listEl: HTMLElement): void {
 		listEl.empty();
+		this.previewButtons.clear();
 		const query = this.query.trim().toLowerCase();
 		const files = this.audioFiles().filter(file => !query || file.path.toLowerCase().includes(query));
 		const renderGeneration = ++this.renderGeneration;
@@ -129,12 +138,17 @@ export class AudioFilePickerModal extends Modal {
 			};
 			setExpanded(!this.collapsedFolders.has(folder.label));
 			toggle.addEventListener("click", () => {
-				setExpanded(toggle.getAttribute("aria-expanded") !== "true");
+				const expanded = toggle.getAttribute("aria-expanded") !== "true";
+				if (!expanded && folder.files.some(file => pathForAudioBlock(file, this.options.audioFolder) === this.previewController.activePath)) {
+					this.previewController.stop();
+				}
+				setExpanded(expanded);
 			});
 
 			for (const file of folder.files) {
 				const path = pathForAudioBlock(file, this.options.audioFolder);
-				const label = folderContent.createEl("label", {cls: "rpg-audio-file-picker-row"});
+				const row = folderContent.createDiv({cls: "rpg-audio-file-picker-row"});
+				const label = row.createEl("label", {cls: "rpg-audio-file-picker-selection"});
 				const selector = label.createEl("input", {type: audioFileSelectionInputType(this.options.multiple)});
 				if (this.options.multiple === false) selector.name = `rpg-audio-file-picker-${this.pickerId}-selection`;
 				selector.checked = this.selected.has(path);
@@ -148,9 +162,34 @@ export class AudioFilePickerModal extends Modal {
 				const details = label.createDiv({cls: "rpg-audio-file-picker-row-details"});
 				details.createDiv({cls: "rpg-audio-file-picker-name", text: file.name});
 				details.createDiv({cls: "rpg-audio-file-picker-path", text: file.path, attr: {title: file.path}});
+				const preview = row.createEl("button", {
+					cls: "rpg-audio-file-picker-preview",
+					attr: {type: "button"},
+				});
+				this.previewButtons.set(path, {button: preview, name: file.name});
+				preview.addEventListener("click", event => {
+					event.preventDefault();
+					event.stopPropagation();
+					this.previewController.toggle(path, this.app.vault.getResourcePath(file));
+				});
 			}
 		}
+		const activePath = this.previewController.activePath;
+		if (activePath && !this.previewButtons.has(activePath)) this.previewController.stop();
+		else this.updatePreviewButtons(activePath);
 		this.updateFooter();
+	}
+
+	private updatePreviewButtons(activePath: string | null): void {
+		for (const [path, {button, name}] of this.previewButtons) {
+			const active = path === activePath;
+			button.empty();
+			setIcon(button, active ? "square" : "play");
+			button.toggleClass("is-previewing", active);
+			const label = active ? `Stop preview of ${name}` : `Preview ${name}`;
+			button.setAttribute("aria-label", label);
+			button.setAttribute("title", label);
+		}
 	}
 
 	private updateFooter(): void {
@@ -161,6 +200,7 @@ export class AudioFilePickerModal extends Modal {
 
 	private submit(): void {
 		if (this.selected.size === 0) return;
+		this.previewController.stop();
 		this.options.onChoose(Array.from(this.selected));
 		this.close();
 	}

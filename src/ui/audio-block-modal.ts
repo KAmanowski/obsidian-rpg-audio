@@ -242,6 +242,7 @@ export class AudioBlockModal extends Modal {
 			const customSetting = new Setting(section)
 				.setName("Custom type")
 				.setDesc("Name and color are saved for future audio blocks when this block is saved.");
+			customSetting.settingEl.dataset.audioField = "type";
 			customSetting.settingEl.addClass("rpg-audio-custom-type-setting");
 			customSetting.addText(text => {
 				text.setValue(currentValue).setPlaceholder("Custom type").onChange(value => {
@@ -298,6 +299,7 @@ export class AudioBlockModal extends Modal {
 	}
 
 	private renderFiles(section: HTMLElement): void {
+		section.dataset.audioField = "files";
 		const intro = section.createDiv({cls: "rpg-audio-files-heading"});
 		intro.createDiv({
 			cls: "setting-item-description",
@@ -316,7 +318,9 @@ export class AudioBlockModal extends Modal {
 		const list = section.createEl("ol", {cls: "rpg-audio-editor-file-list"});
 		const playlist = isPlaylistForm(this.state);
 		this.state.entries.forEach((entry, index) => {
+			const entryField = `entry-${entry.key}`;
 			const item = list.createEl("li", {cls: "rpg-audio-editor-file-row"});
+			item.dataset.audioField = entryField;
 			const row = item.createDiv({cls: "rpg-audio-editor-file-summary"});
 			if (playlist) row.createSpan({cls: "rpg-audio-editor-file-number", text: String(index + 1)});
 			const path = row.createDiv({cls: "rpg-audio-editor-file-path", text: entry.path, attr: {title: entry.path}});
@@ -331,9 +335,7 @@ export class AudioBlockModal extends Modal {
 				this.rerender();
 			});
 
-			if (!this.fileAvailable(entry.path)) {
-				item.createDiv({cls: "rpg-audio-field-error", text: "Audio file not found. Replace or remove it."});
-			}
+			this.errorEl(item, entryField);
 
 			const details = item.createEl("details", {cls: `rpg-audio-editor-file-details ${playlist ? "" : "is-disabled"}`});
 			details.open = this.expandedEntries.has(entry.key);
@@ -344,12 +346,11 @@ export class AudioBlockModal extends Modal {
 			details.createEl("summary", {text: "Title and region overrides"});
 			const explanation = details.createDiv({cls: "rpg-audio-disabled-explanation"});
 			if (!playlist) explanation.setText("Available when two or more files are selected. Draft values are retained but not saved for a single file.");
-			this.textSetting(details, `entry-${entry.key}`, "Display title", "Optional playlist item title.", entry.title, "Opening assault", value => {
+			this.textSetting(details, entryField, "Display title", "Optional playlist item title.", entry.title, "Opening assault", value => {
 				entry.title = value;
 			}, !playlist);
 			this.boundarySetting(details, entry.key, "start", "Start override", entry.start, !playlist, value => { entry.start = value; });
 			this.boundarySetting(details, entry.key, "end", "End override", entry.end, !playlist, value => { entry.end = value; });
-			this.errorEl(details, `entry-${entry.key}`);
 		});
 		this.errorEl(section, "files");
 	}
@@ -396,7 +397,7 @@ export class AudioBlockModal extends Modal {
 			this.state.volume = value.trim() === "" || value.trim() === "1" ? {mode: "inherit"} : {mode: "value", value};
 		}, false, "number");
 		this.textSetting(section, "fadein", "Fade in duration", "Non-negative seconds from silence when playback starts.", this.state.fadein, "2", value => { this.state.fadein = value; }, false, "number");
-		this.textSetting(section, "fadeout", "Fade out duration", "Non-negative seconds before the boundary and for the Fade out transport action.", this.state.fadeout, "4", value => { this.state.fadeout = value; }, false, "number");
+		this.textSetting(section, "fadeout", "Fade out duration", "Optional per-block override in seconds. Leave blank to inherit the plugin default.", this.state.fadeout, "4", value => { this.state.fadeout = value; }, false, "number");
 
 		this.choiceSetting(section, "volume-fade", "Volume automation", "Use the plugin default or define a target and duration for this block.", this.state.volumeFadeMode, false, value => {
 			this.state.volumeFadeMode = value as "inherit" | "custom";
@@ -431,7 +432,10 @@ export class AudioBlockModal extends Modal {
 
 	private renderFooter(parent: HTMLElement): void {
 		const footer = parent.createDiv({cls: "rpg-audio-block-editor-footer"});
-		this.summaryEl = footer.createDiv({cls: "rpg-audio-validation-summary", attr: {"aria-live": "polite"}});
+		const status = footer.createDiv({cls: "rpg-audio-validation-status", attr: {"aria-live": "polite"}});
+		status.dataset.audioField = "source";
+		this.summaryEl = status.createDiv({cls: "rpg-audio-validation-summary"});
+		this.errorEl(status, "source");
 		const actions = footer.createDiv({cls: "rpg-audio-block-editor-actions"});
 		const cancel = actions.createEl("button", {text: "Cancel"});
 		cancel.addEventListener("click", () => this.close());
@@ -493,6 +497,7 @@ export class AudioBlockModal extends Modal {
 
 	private boundarySetting(parent: HTMLElement, entryKey: string, boundary: "start" | "end", name: string, value: BoundaryInput, disabled: boolean, onChange: (value: BoundaryInput) => void): void {
 		const setting = new Setting(parent).setName(name);
+		setting.settingEl.dataset.audioField = `entry-${entryKey}`;
 		setting.addDropdown(dropdown => dropdown
 			.addOption("inherit", "Inherit block")
 			.addOption("none", "No boundary")
@@ -519,8 +524,14 @@ export class AudioBlockModal extends Modal {
 	}
 
 	private errorEl(parent: HTMLElement, field: string): void {
-		if (parent.querySelector(`.rpg-audio-field-error[data-error-for="${field}"]`)) return;
-		parent.createDiv({cls: "rpg-audio-field-error", attr: {"data-error-for": field, "aria-live": "polite"}});
+		if (this.contentEl.querySelector(`.rpg-audio-field-error[data-error-for="${field}"]`)) return;
+		parent.createDiv({
+			cls: "rpg-audio-field-error",
+			attr: {
+				id: `rpg-audio-field-error-${field}`,
+				"data-error-for": field,
+			},
+		});
 	}
 
 	private iconButton(parent: HTMLElement, icon: string, label: string, disabled: boolean, action: () => void): void {
@@ -550,10 +561,28 @@ export class AudioBlockModal extends Modal {
 		const result = this.validation();
 		for (const element of Array.from(this.contentEl.querySelectorAll<HTMLElement>("[data-error-for]"))) {
 			const field = element.dataset.errorFor ?? "";
-			const visible = this.submitted || this.touched.has(field) || field === "source" || field.startsWith("entry-");
-			const messages = visible ? result.fieldErrors[field] ?? [] : [];
+			const messages = result.fieldErrors[field] ?? [];
 			element.setText(messages.join(" "));
 			element.toggleClass("is-visible", messages.length > 0);
+		}
+		for (const fieldContainer of Array.from(this.contentEl.querySelectorAll<HTMLElement>("[data-audio-field]"))) {
+			const field = fieldContainer.dataset.audioField ?? "";
+			const error = this.contentEl.querySelector<HTMLElement>(`.rpg-audio-field-error[data-error-for="${field}"]`);
+			const invalid = (result.fieldErrors[field]?.length ?? 0) > 0;
+			fieldContainer.toggleClass("has-error", invalid);
+			if (invalid && error) fieldContainer.setAttribute("aria-describedby", error.id);
+			else fieldContainer.removeAttribute("aria-describedby");
+			const controls = Array.from(fieldContainer.querySelectorAll<HTMLElement>("input, select, textarea"))
+				.filter(control => control.closest("[data-audio-field]") === fieldContainer);
+			for (const control of controls) {
+				if (invalid) control.setAttribute("aria-invalid", "true");
+				else control.removeAttribute("aria-invalid");
+				const describedBy = new Set((control.getAttribute("aria-describedby") ?? "").split(/\s+/u).filter(Boolean));
+				if (invalid && error) describedBy.add(error.id);
+				else if (error) describedBy.delete(error.id);
+				if (describedBy.size > 0) control.setAttribute("aria-describedby", Array.from(describedBy).join(" "));
+				else control.removeAttribute("aria-describedby");
+			}
 		}
 		if (this.previewEl) this.previewEl.setText(result.serialized);
 		if (this.saveButton) this.saveButton.disabled = !result.valid || this.saving;

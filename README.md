@@ -10,14 +10,15 @@ Turn your session prep notes into a soundboard — ambience, music, and sound ef
 - **Seek bar with region handles** — scrub to any position; drag the start/end handles to set a playback region on the fly (the region is highlighted on the bar and loops independently of the rest of the file)
 - **Sidebar** — a dedicated panel showing all tracks grouped by type with colour-coded section headers, per-track seek bar, and global/per-group fade controls
 - **Scene transitions via `scope:`** — label tracks with one or more context tags; playing a scoped track automatically stops tracks from other scopes
-- **Crossfade** — exclusive transitions fade smoothly (configurable duration, or instant)
+- **Crossfade** — exclusive transitions use the global duration; playlists inherit their global playlist default unless the block explicitly overrides it
 - **Playlists** — list multiple files and they play in sequence, with optional looping
 - **Layered audio** — run ambience, music, and sound effects simultaneously with independent volume controls
-- **Per-player volume fades** — start an inline player at one volume and move linearly to another over a configured number of seconds
+- **Per-player volume fades** — every block inherits the global target/duration pair unless it explicitly provides both per-block volume-fade fields
 - **Fade controls** — fade in/out individual groups (e.g. fade out all ambience) or everything at once, with red/green direction feedback while volume changes
 - **Visible configuration errors** — invalid settings and missing audio files replace the player with a red error panel that identifies each problem
 - **Autoplay** — mark tracks with `autoplay: true` and they start playing as soon as their note opens or is shown in a hover popover. Gated by a sidebar toggle so prep stays silent and you only flip it on at the start of a session
 - **Audio block editor** — add or safely edit single-file and playlist blocks through a validated GUI without remembering the syntax
+- **Audio picker previews** — hover or keyboard-focus an audio file and select its play control to preview it before adding it; only one preview plays at a time
 - **Debug overlay** — optional sidebar toggle that shows each track's last event and the active scope set, useful when audio behaves unexpectedly
 
 ## Use cases
@@ -94,7 +95,9 @@ file: audio/sfx/door-creak.mp3
 
 ### Fade a track to a background level
 
-Set an initial `volume`, then provide both volume-fade fields. This example starts at full volume and fades linearly to half volume over 60 seconds:
+The plugin-level **Default volume fade target** and **Default volume fade duration** settings are runtime defaults for every `rpg-audio` block. A block that omits both volume-fade fields inherits those global values automatically. To override them for one block, provide both `volume-fade-to` and `volume-fade-duration`; the pair must always be specified together.
+
+This example explicitly overrides the global defaults: it starts at full volume and fades linearly to half volume over 60 seconds.
 
 ````markdown
 ```rpg-audio
@@ -169,7 +172,7 @@ files:
 
 Add `random: true` to shuffle. By default, `playlist-end-action: auto` preserves the original behavior: without `loop: true`, one item plays and stops; with loop enabled, playback advances and wraps. Use `playlist-end-action: next` to advance through the list even when loop is off, stopping after the last item.
 
-Set `crossfade` to the number of seconds that adjacent items should overlap, using either `crossfade: 3` or `crossfade: 3s`. The incoming item starts at its effective start boundary while the current item fades out and the incoming item fades in. Automatic crossfades occur only when the end action advances to another item; `repeat` and `stop` keep their literal behavior. Selecting another item while playback is active also uses the crossfade. If less time remains than configured, the overlap is shortened to the available time. Pausing or stopping during a crossfade safely ends the outgoing source.
+Playlist blocks inherit the plugin-level **Default playlist crossfade** when `crossfade` is omitted. Set `crossfade` on an individual playlist to override that global default, using either `crossfade: 3` or `crossfade: 3s`; use `crossfade: 0` to disable overlap for that playlist even when the global default is enabled. The incoming item starts at its effective start boundary while the current item fades out and the incoming item fades in. Automatic crossfades occur only when the end action advances to another item; `repeat` and `stop` keep their literal behavior. Selecting another item while playback is active also uses the crossfade. If less time remains than configured, the overlap is shortened to the available time. Pausing or stopping during a crossfade safely ends the outgoing source.
 
 Inline players with more than one file include a collapsible playlist below the transport controls. Expand it to see every file in configured order, identify the current item, or select any available item to play it immediately. The list stays in configured order when `random: true`; unavailable files are identified when permissive validation allows the player to render.
 
@@ -217,14 +220,14 @@ Click the music note icon in the ribbon (or run the **Toggle audio sidebar** com
 | `scope` | No       | Comma-separated context labels (e.g. `tavern` or `outdoors, district-1`). Playing a scoped track stops other-scope tracks. See [Scene transitions with scope](#scene-transitions-with-scope). |
 | `autoplay` | No    | `true` or `false`. When enabled, the track starts playing as soon as it is rendered (e.g. when the note is opened or shown in a hover popover). Requires the sidebar autoplay toggle to be on. Defaults to `false`. |
 | `stops`     | No   | Comma-separated list of types or track IDs to stop when this track starts playing. Prefix a token with `!` to exclude. See [Advanced directives](#advanced-directives). |
-| `fadesout`  | No   | Comma-separated list of types or track IDs to fade out, then stop, when this track starts playing. Each target uses its own `fadeout` duration; targets without one stop immediately. Prefix a token with `!` to exclude. See [Advanced directives](#advanced-directives). |
+| `fadesout`  | No   | Comma-separated list of types or track IDs to fade out, then stop, when this track starts playing. Each target uses its effective `fadeout` duration, inherited from **Default fade out** when omitted; only an effective value of `0` stops immediately. Prefix a token with `!` to exclude. See [Advanced directives](#advanced-directives). |
 | `pauses`    | No   | Like `stops`, but paused tracks keep their position and can be resumed later. |
 | `resumes`   | No   | Comma-separated list of types or track IDs to resume when this track starts. Only affects tracks that are currently paused. |
-| `fadein` | No      | Seconds to fade in from silence when the track starts playing (or after `start`, when set). |
-| `fadeout` | No     | Seconds to fade out to silence before the track ends (or region end). A positive value also changes the secondary per-track **Stop** control to **Fade out** while playing. Select it to fade using this duration and stop at the end; during the fade it becomes **Stop**, which stops immediately if selected again. |
+| `fadein` | No      | Per-block seconds to fade in from silence when the track starts playing (or after `start`, when set). An explicit value takes precedence over the global **Play fade duration** for that block's fresh-play fade-in. |
+| `fadeout` | No     | Per-block seconds to fade out to silence before the track ends (or region end). Omitting it inherits the plugin's **Default fade out**. A positive effective value also changes the secondary per-track **Stop** control to **Fade out**; select it to fade and then stop. During the fade it becomes **Stop**, which stops immediately if selected again. It is also the duration used when another block targets this one with `fadesout`. Set `fadeout: 0` to override and disable a non-zero global default for this block. |
 | `volume` | No      | Initial volume from `0` (silent) to `1` (full) applied when the track starts. Defaults to `1`. Can still be adjusted afterwards with the player's volume slider. |
-| `volume-fade-to` | No | Target volume from `0` (silent) to `1` (full). Requires `volume-fade-duration`; invalid or incomplete volume-fade settings produce a configuration error. Omitting both `volume-fade-to` and `volume-fade-duration` inherits the plugin's **Default volume fade target** / **Default volume fade duration** settings. |
-| `volume-fade-duration` | No | Positive number of seconds for a smooth linear transition from `volume` to `volume-fade-to`. Requires `volume-fade-to`. Defaults to no volume fade, or to the plugin's default volume fade duration when both volume-fade fields are omitted. |
+| `volume-fade-to` | No | Per-block target volume from `0` (silent) to `1` (full). Requires `volume-fade-duration`; the explicit pair overrides the plugin defaults for this block. Omitting both fields makes every block inherit **Default volume fade target** and **Default volume fade duration**. |
+| `volume-fade-duration` | No | Per-block positive number of seconds for a smooth linear transition from `volume` to `volume-fade-to`. Requires `volume-fade-to`; the explicit pair overrides the global volume-fade defaults. Omitting both fields inherits the global pair, whose default duration is `0` (disabled). |
 
 ### Single-file settings
 
@@ -243,7 +246,7 @@ Click the music note icon in the ribbon (or run the **Toggle audio sidebar** com
 | `start` | No | Master start boundary inherited by every item unless overridden or cleared per file. |
 | `end` | No | Master end boundary inherited by every item unless overridden or cleared per file. |
 | `playlist-end-action` | No | `auto`, `next`, `repeat`, or `stop`. `auto` follows the existing loop-controlled behavior. `next` traverses all items and only wraps when loop is on. `repeat` restarts the current effective region. `stop` stops the playlist. Defaults to `auto`. |
-| `crossfade` | No | Seconds that adjacent playlist items overlap while fading into each other. Accepts a number such as `3` or a seconds suffix such as `3s`. Applies to automatic advancing transitions and direct item selection while playing. Defaults to `0` (instant changes), or to the plugin's **Default playlist crossfade** setting when omitted. |
+| `crossfade` | No | Per-playlist seconds that adjacent items overlap while fading into each other. Accepts a number such as `3` or a seconds suffix such as `3s`. Applies to automatic advancing transitions and direct item selection while playing. Omitting it inherits **Default playlist crossfade**; an explicit value overrides that global default, and `0` disables overlap for this playlist. |
 | `loop` | No | With `auto`, enables advancing and wrapping. With `next`, controls whether the last item wraps to the first. Defaults to false. Explicit `repeat` and `stop` actions take precedence. |
 | `random` | No | Picks a random initial item. Advancing actions choose other items randomly; `next` avoids repeats until the current cycle is exhausted. Defaults to false. |
 | Per-file `{start=…, end=…}` | No | Timestamp overrides for one item. Omit a key to inherit the master value or use `none` to remove that boundary. Runtime handle changes override configuration for the current item until stopped. |
@@ -263,7 +266,7 @@ Most scene-transition use cases are covered by `scope:`. The `stops:` / `fadesou
 - **One-shot SFX that pauses background audio** — a door-open sfx that pauses ambience until a matching door-close sfx resumes it. This needs explicit pause/resume because you want resume-from-position behavior, which scope's stop semantics don't provide.
 - **Cross-cutting exceptions** — silence a global music bed during a dramatic NPC theme without giving the bed a scope.
 - **Surgical per-id targeting** — `stops: <some-id>` to stop one specific track when this one plays.
-- **Per-track fade-outs** — `fadesout: <some-id>` to use the target track's configured `fadeout` duration before stopping it.
+- **Per-track fade-outs** — `fadesout: <some-id>` to use the target track's explicit or globally inherited `fadeout` duration before stopping it.
 
 ### Pause-and-resume SFX example
 
@@ -314,12 +317,12 @@ Prefix a token with `!` to exclude it. Example: `stops: ambient, !crowd-ambient`
 - **Master volume** — global volume multiplier applied to all tracks.
 - **Auto-open sidebar** — automatically open the sidebar when the plugin loads.
 - **Autoplay delay** — duration in milliseconds to wait before an autoplay track actually starts (default: 0ms / instant). If the track unloads during the delay — for example a hover popover is dismissed before the timer fires — playback is cancelled. Useful when moving the mouse around a map with many marker popovers that would otherwise blast audio on every flicker.
-- **Crossfade duration** — duration in milliseconds of the crossfade between exclusive tracks (default: 2000ms). Set to 0 to disable crossfading and use hard stops.
-- **Play fade duration** — duration in milliseconds of the fade applied when starting, pausing, and resuming a track (default: 0ms / instant). Clicking play during a fade-out reverses into a fade-in (and vice versa).
-- **Default playlist crossfade** — seconds of overlap used by playlist blocks that omit `crossfade` (default: 0s / disabled). An explicit per-block `crossfade` always overrides this.
-- **Default volume fade target** — target volume from `0` to `1` used by blocks that omit `volume-fade-to` (default: `0.5`). Only takes effect when the default volume fade duration is above 0. An explicit per-block `volume-fade-to` always overrides this.
-- **Default volume fade duration** — seconds used by blocks that omit `volume-fade-duration` (default: 0s / disabled). An explicit per-block `volume-fade-duration` always overrides this.
-- **New audio block defaults** — initial type, loop, random order, autoplay, playlist end action, fade-in duration, fade-out duration, and volume copied into newly authored blocks. Existing blocks do not inherit these authoring defaults and keep their saved behavior.
+- **Crossfade duration** — global duration in milliseconds for transitions between separate blocks, including `scope`, `stops`, `pauses`, and `resumes` transitions (default: 2000ms). It applies to every participating block unless the transition uses a block-specific behavior such as the target's `fadeout` through `fadesout`. Set it to 0 to use hard stops.
+- **Play fade duration** — global duration in milliseconds applied by default when any block starts, pauses, or resumes (default: 0ms / instant). It does not control the Stop action; Stop uses the effective **Default fade out** / `fadeout` value described below. A block's explicit `fadein` takes precedence for its fresh-play fade-in. Clicking play during a fade-out reverses into a fade-in (and vice versa).
+- **Default fade out** — global seconds inherited at runtime by every block that omits `fadeout` (default: 0s / disabled). A positive effective duration changes that track's immediate **Stop** control to **Fade out**, which fades to silence and then stops. An explicit `fadeout` overrides the global value; use `fadeout: 0` for an immediate Stop on one block. Re-render open blocks after changing this setting so they pick up the new default.
+- **Default playlist crossfade** — global seconds of overlap inherited by every playlist block that omits `crossfade` (default: 0s / disabled). An explicit per-playlist `crossfade` overrides it; `crossfade: 0` disables overlap for that playlist.
+- **Default volume fade target** and **Default volume fade duration** — a global pair inherited by every `rpg-audio` block that omits both `volume-fade-to` and `volume-fade-duration` (defaults: target `0.5`, duration 0s / disabled). Providing both fields on a block explicitly overrides the global pair for that block; providing only one is invalid.
+- **New audio block defaults** — initial type, loop, random order, autoplay, playlist end action, fade-in duration, and volume copied into newly authored blocks. These authoring defaults do not change existing blocks. **Default fade out**, playlist crossfade, and the volume-fade pair are runtime defaults and therefore apply to existing and new blocks that omit their corresponding override fields.
 
 ## Commands
 

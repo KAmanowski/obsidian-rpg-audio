@@ -91,6 +91,12 @@ const KNOWN_KEYS = new Set([
 	"volume-fade-duration", "playlist-end-action", "crossfade", "file", "files",
 ]);
 
+const EDITABLE_REQUIRED_PARSER_ERRORS = new Set([
+	"Missing required setting: id.",
+	"Missing required setting: name.",
+	"Missing required audio file: add file or files.",
+]);
+
 let draftSequence = 0;
 
 export function createAudioFileDraft(path: string): AudioFileDraft {
@@ -234,7 +240,8 @@ export function hydrateAudioBlockForm(
 		}
 	}
 
-	return {state, issues: Array.from(new Set([...parsed.errors, ...raw.issues]))};
+	const unsafeParserIssues = parsed.errors.filter(error => !EDITABLE_REQUIRED_PARSER_ERRORS.has(error));
+	return {state, issues: Array.from(new Set([...unsafeParserIssues, ...raw.issues]))};
 }
 
 function appendCsv(lines: string[], key: string, values: string[]): void {

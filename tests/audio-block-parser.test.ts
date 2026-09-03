@@ -18,6 +18,7 @@ describe("parseAudioBlock volume fade settings", () => {
 		assert.equal(def.volumeFadeTarget, null);
 		assert.equal(def.volumeFadeDuration, 0);
 		assert.equal(def.playlistCrossfadeDuration, 0);
+		assert.equal(def.fadeOutDuration, 0);
 	});
 
 	it("parses a valid initial volume, target volume, and duration", () => {
@@ -65,16 +66,19 @@ volume-fade-duration: 2.5
 describe("parseAudioBlock plugin-level defaults", () => {
 	const ACTIVE_DEFAULTS: AudioBlockDefaults = {
 		playlistCrossfadeDuration: 4,
+		fadeOutDuration: 6,
 		volumeFadeTarget: 0.25,
 		volumeFadeDuration: 30,
 	};
 	const DISABLED_DEFAULTS: AudioBlockDefaults = {
 		playlistCrossfadeDuration: 0,
+		fadeOutDuration: 0,
 		volumeFadeTarget: 0.5,
 		volumeFadeDuration: 0,
 	};
 
-	it("inherits plugin defaults when a block omits crossfade and volume fade settings", () => {
+	it("inherits plugin defaults when blocks omit fade-out, crossfade, and volume fade settings", () => {
+		const single = parseAudioBlock(REQUIRED_FIELDS, ACTIVE_DEFAULTS);
 		const def = parseAudioBlock(`
 id: inherits-defaults
 name: Inherits defaults
@@ -83,8 +87,10 @@ files:
 - audio/music/two.mp3
 `, ACTIVE_DEFAULTS);
 
+		assert.equal(single?.fadeOutDuration, 6);
 		assert.ok(def);
 		assert.equal(def.playlistCrossfadeDuration, 4);
+		assert.equal(def.fadeOutDuration, 6);
 		assert.equal(def.volumeFadeTarget, 0.25);
 		assert.equal(def.volumeFadeDuration, 30);
 	});
@@ -103,6 +109,7 @@ files:
 
 		assert.ok(def);
 		assert.equal(def.playlistCrossfadeDuration, 1.5);
+		assert.equal(def.fadeOutDuration, 6);
 		assert.equal(def.volumeFadeTarget, 0.9);
 		assert.equal(def.volumeFadeDuration, 10);
 	});
@@ -112,8 +119,17 @@ files:
 
 		assert.ok(def);
 		assert.equal(def.playlistCrossfadeDuration, 0);
+		assert.equal(def.fadeOutDuration, 0);
 		assert.equal(def.volumeFadeTarget, null);
 		assert.equal(def.volumeFadeDuration, 0);
+	});
+
+	it("lets an explicit fadeout override or disable the plugin default", () => {
+		const overridden = parseAudioBlock(`${REQUIRED_FIELDS}\nfadeout: 2`, ACTIVE_DEFAULTS);
+		const disabled = parseAudioBlock(`${REQUIRED_FIELDS}\nfadeout: 0`, ACTIVE_DEFAULTS);
+
+		assert.equal(overridden?.fadeOutDuration, 2);
+		assert.equal(disabled?.fadeOutDuration, 0);
 	});
 
 	it("still disables a partial volume fade config instead of falling back to plugin defaults", () => {
@@ -131,6 +147,7 @@ files:
 		assert.equal(def.playlistCrossfadeDuration, 0);
 		assert.equal(def.volumeFadeTarget, null);
 		assert.equal(def.volumeFadeDuration, 0);
+		assert.equal(def.fadeOutDuration, 0);
 	});
 });
 

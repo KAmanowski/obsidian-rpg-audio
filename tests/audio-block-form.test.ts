@@ -12,6 +12,7 @@ import {AudioBlockDefaults, parseAudioBlockDetailed} from "../src/audio-block-pa
 
 const PARSER_DEFAULTS: AudioBlockDefaults = {
 	playlistCrossfadeDuration: 3,
+	fadeOutDuration: 0,
 	volumeFadeTarget: 0.5,
 	volumeFadeDuration: 60,
 };
@@ -63,6 +64,29 @@ file: one.mp3`, PARSER_DEFAULTS);
 		assert.ok(result.issues.some(issue => issue.includes('Unknown setting "unknown"')));
 	});
 
+	it("clears missing required source errors after the hydrated form is completed", () => {
+		const hydrated = hydrateAudioBlockForm("loop: true", PARSER_DEFAULTS);
+		assert.deepEqual(hydrated.issues, []);
+
+		const initial = validateAudioBlockForm(hydrated.state, {
+			parserDefaults: PARSER_DEFAULTS,
+			hydrationIssues: hydrated.issues,
+		});
+		assert.equal(initial.errors.length, 3);
+
+		hydrated.state.name = "Completed block";
+		hydrated.state.id = "completed-block";
+		hydrated.state.entries = [createAudioFileDraft("valid.mp3")];
+		const completed = validateAudioBlockForm(hydrated.state, {
+			parserDefaults: PARSER_DEFAULTS,
+			hydrationIssues: hydrated.issues,
+			isFileAvailable: () => true,
+		});
+
+		assert.equal(completed.valid, true);
+		assert.deepEqual(completed.errors, []);
+	});
+
 	it("does not silently discard playlist-style metadata from a single file", () => {
 		const result = hydrateAudioBlockForm(`id: excerpt
 name: Excerpt
@@ -109,6 +133,20 @@ file: one.mp3 [Opening] {start=30}`, PARSER_DEFAULTS);
 });
 
 describe("audio block form validation", () => {
+	it("identifies every blocking field in a new empty draft", () => {
+		const result = validateAudioBlockForm(createAudioBlockFormState(), {
+			parserDefaults: PARSER_DEFAULTS,
+		});
+
+		assert.equal(result.valid, false);
+		assert.deepEqual(result.fieldErrors, {
+			name: ["Name is required."],
+			id: ["ID is required."],
+			files: ["Add at least one audio file."],
+		});
+		assert.equal(result.errors.length, 3);
+	});
+
 	it("reports duplicate IDs, missing files, and inherited boundary conflicts", () => {
 		const state = createAudioBlockFormState();
 		state.id = "duplicate";

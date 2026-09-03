@@ -66,6 +66,7 @@ class AudioBlockSourceModal extends FuzzySuggestModal<AudioBlockFence> {
 function parserDefaults(plugin: RpgAudioPlugin): AudioBlockDefaults {
 	return {
 		playlistCrossfadeDuration: plugin.settings.defaultPlaylistCrossfade,
+		fadeOutDuration: plugin.settings.defaultAudioBlockFadeOut,
 		volumeFadeTarget: plugin.settings.defaultVolumeFadeTarget,
 		volumeFadeDuration: plugin.settings.defaultVolumeFadeDuration,
 	};
@@ -79,7 +80,8 @@ function authoringDefaults(plugin: RpgAudioPlugin): AudioBlockAuthoringDefaults 
 		autoplay: plugin.settings.defaultAudioBlockAutoplay,
 		playlistEndAction: plugin.settings.defaultAudioBlockPlaylistEndAction,
 		fadeInDuration: plugin.settings.defaultAudioBlockFadeIn,
-		fadeOutDuration: plugin.settings.defaultAudioBlockFadeOut,
+		// Fade-out is a runtime parser default; leaving the form field blank preserves inheritance.
+		fadeOutDuration: 0,
 		volume: plugin.settings.defaultAudioBlockVolume,
 	};
 }
