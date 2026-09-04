@@ -1795,81 +1795,73 @@ button.rpg-audio-emoji-tab:focus-visible {
 	border-radius: 6px;
 }
 
-.rpg-audio-file-picker-folder {
-	position: sticky;
-	top: 0;
-	z-index: 1;
-	background: var(--background-primary);
-}
-
-.rpg-audio-file-picker-folder-toggle {
+.rpg-audio-file-picker-toolbar {
 	display: flex;
-	align-items: center;
+	align-items: flex-start;
 	gap: 8px;
-	width: 100%;
-	min-height: 44px;
-	padding: 10px 12px 5px;
-	border: 0;
-	border-radius: 0;
-	box-shadow: none;
-	background: transparent;
-	color: var(--text-faint);
-	font-size: var(--font-ui-smaller);
-	font-weight: var(--font-medium);
-	letter-spacing: .05em;
-	text-align: left;
-	text-transform: uppercase;
+	margin-bottom: 10px;
 }
 
-.rpg-audio-file-picker-folder-toggle:hover {
-	background: var(--background-modifier-hover);
-}
-
-.rpg-audio-file-picker-folder-chevron {
-	display: inline-flex;
-	flex: 0 0 auto;
-	width: 14px;
-	height: 14px;
-	transition: transform 150ms ease;
-}
-
-.rpg-audio-file-picker-folder-chevron.is-collapsed {
-	transform: rotate(-90deg);
-}
-
-.rpg-audio-file-picker-folder-chevron svg {
-	width: 14px;
-	height: 14px;
-}
-
-.rpg-audio-file-picker-folder-name {
+.rpg-audio-file-picker-tabs-scroll {
 	min-width: 0;
 	flex: 1 1 auto;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	overflow-x: auto;
+	padding: 2px;
 }
 
-.rpg-audio-file-picker-folder-count {
-	flex: 0 0 auto;
-	min-width: 20px;
-	padding: 2px 6px;
-	border-radius: 999px;
+.rpg-audio-file-picker-folder-tabs {
+	width: max-content;
+	flex-wrap: nowrap;
+}
+
+.rpg-audio-file-picker-folder-tabs button {
+	max-width: 140px;
+	border-color: var(--background-modifier-border);
 	background: var(--background-secondary);
-	font-variant-numeric: tabular-nums;
-	letter-spacing: 0;
-	text-align: center;
+	color: var(--text-muted);
 }
 
-.rpg-audio-file-picker-folder-content[hidden] {
-	display: none;
+.rpg-audio-file-picker-folder-tabs button:hover {
+	border-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
 }
 
-@media (prefers-reduced-motion: reduce) {
-	.rpg-audio-file-picker-folder-chevron,
-	.rpg-audio-file-picker-preview {
-		transition: none;
-	}
+.rpg-audio-file-picker-folder-tabs button.is-selected {
+	border-color: var(--interactive-accent);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	box-shadow: none;
+}
+
+.modal.rpg-audio-file-picker-modal button.rpg-audio-file-picker-sort {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	gap: 5px;
+	width: auto;
+	min-width: 64px;
+	height: 32px;
+	padding: 0 9px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background-color: var(--background-secondary);
+	box-shadow: none;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-medium);
+}
+
+.modal.rpg-audio-file-picker-modal button.rpg-audio-file-picker-sort:hover {
+	border-color: var(--background-modifier-border-hover);
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.rpg-audio-file-picker-sort svg {
+	width: 14px;
+	height: 14px;
 }
 
 .rpg-audio-file-picker-row {
@@ -1944,6 +1936,12 @@ button.rpg-audio-emoji-tab:focus-visible {
 	}
 }
 
+@media (prefers-reduced-motion: reduce) {
+	.rpg-audio-file-picker-preview {
+		transition: none;
+	}
+}
+
 .rpg-audio-file-picker-name,
 .rpg-audio-file-picker-path {
 	overflow: hidden;
@@ -1957,7 +1955,6 @@ button.rpg-audio-emoji-tab:focus-visible {
 }
 
 .rpg-audio-file-picker-path,
-.rpg-audio-file-picker-count,
 .rpg-audio-file-picker-empty {
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
@@ -2022,8 +2019,14 @@ button.rpg-audio-emoji-tab:focus-visible {
 	.rpg-audio-file-picker-actions button,
 	.rpg-audio-files-heading button,
 	.rpg-audio-editor-file-actions button,
-	.rpg-audio-segmented button {
+	.rpg-audio-segmented button,
+	.rpg-audio-file-picker-sort {
 		min-height: 44px;
+	}
+
+	.rpg-audio-file-picker-sort {
+		width: auto;
+		min-width: 72px;
 	}
 
 	.rpg-audio-block-editor-actions button,

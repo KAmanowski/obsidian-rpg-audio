@@ -1,5 +1,10 @@
 import {App, Modal, Notice, setIcon, TFile} from "obsidian";
-import {audioFileSelectionInputType, groupAudioFilesByFolder} from "../audio-library";
+import {
+	AudioLibrarySortDirection,
+	audioFileSelectionInputType,
+	groupAudioFilesByFolder,
+	selectAudioLibraryFiles,
+} from "../audio-library";
 import {AudioPreviewController} from "../audio-preview";
 import {preserveScrollPosition} from "./scroll-preservation";
 
@@ -21,10 +26,12 @@ export function pathForAudioBlock(file: TFile, audioFolder: string): string {
 export class AudioFilePickerModal extends Modal {
 	private readonly options: AudioFilePickerOptions;
 	private readonly selected = new Set<string>();
-	private readonly collapsedFolders = new Set<string>();
 	private readonly pickerId = ++nextFilePickerId;
-	private renderGeneration = 0;
+	private selectedFolder: string | null = null;
+	private sortDirection: AudioLibrarySortDirection = "asc";
 	private query = "";
+	private folderTabsEl: HTMLElement | null = null;
+	private sortButton: HTMLButtonElement | null = null;
 	private listEl: HTMLElement | null = null;
 	private countEl: HTMLElement | null = null;
 	private submitButton: HTMLButtonElement | null = null;
@@ -57,6 +64,22 @@ export class AudioFilePickerModal extends Modal {
 			this.renderFiles();
 		});
 
+		const toolbar = this.contentEl.createDiv({cls: "rpg-audio-file-picker-toolbar"});
+		const tabsScroll = toolbar.createDiv({cls: "rpg-audio-file-picker-tabs-scroll"});
+		this.folderTabsEl = tabsScroll.createDiv({
+			cls: "rpg-audio-segmented rpg-audio-type-selector rpg-audio-file-picker-folder-tabs",
+			attr: {role: "group", "aria-label": "Filter by audio folder"},
+		});
+		this.sortButton = toolbar.createEl("button", {
+			cls: "clickable-icon rpg-audio-file-picker-sort",
+			attr: {type: "button"},
+		});
+		this.sortButton.addEventListener("click", () => {
+			this.sortDirection = this.sortDirection === "asc" ? "desc" : "asc";
+			this.updateSortButton();
+			this.renderFiles();
+		});
+
 		this.listEl = this.contentEl.createDiv({cls: "rpg-audio-file-picker-list"});
 		this.listEl.setAttribute("role", "group");
 		this.listEl.setAttribute("aria-label", "Audio files");
@@ -72,6 +95,8 @@ export class AudioFilePickerModal extends Modal {
 		});
 		this.submitButton.addEventListener("click", () => this.submit());
 
+		this.renderFolderTabs();
+		this.updateSortButton();
 		this.renderFiles();
 		window.setTimeout(() => input.focus(), 0);
 	}
@@ -84,8 +109,54 @@ export class AudioFilePickerModal extends Modal {
 
 	private audioFiles(): TFile[] {
 		return this.app.vault.getFiles()
-			.filter(file => AUDIO_EXTENSIONS.has(file.extension.toLowerCase()))
-			.sort((a, b) => a.path.localeCompare(b.path));
+			.filter(file => AUDIO_EXTENSIONS.has(file.extension.toLowerCase()));
+	}
+
+	private renderFolderTabs(): void {
+		const tabs = this.folderTabsEl;
+		if (!tabs) return;
+		const render = () => {
+			tabs.empty();
+			for (const folder of groupAudioFilesByFolder(this.audioFiles())) {
+				const selected = folder.path === this.selectedFolder;
+				const fullLabel = folder.path || "Vault root";
+				const actionLabel = selected
+					? `Show files from all folders; currently filtering by ${fullLabel}`
+					: `Filter by ${fullLabel}`;
+				const button = tabs.createEl("button", {
+					text: folder.label,
+					cls: selected ? "is-selected" : "",
+					attr: {
+						type: "button",
+						"aria-label": actionLabel,
+						"aria-pressed": String(selected),
+						title: actionLabel,
+					},
+				});
+				button.addEventListener("click", () => {
+					this.selectedFolder = selected ? null : folder.path;
+					this.renderFolderTabs();
+					this.renderFiles();
+				});
+			}
+		};
+		const scrollEl = tabs.parentElement;
+		if (scrollEl) preserveScrollPosition(scrollEl, render);
+		else render();
+	}
+
+	private updateSortButton(): void {
+		const button = this.sortButton;
+		if (!button) return;
+		button.empty();
+		const ascending = this.sortDirection === "asc";
+		setIcon(button, ascending ? "arrow-up" : "arrow-down");
+		button.createSpan({text: ascending ? "ASC" : "DESC"});
+		const label = ascending
+			? "Files sorted ascending; select to sort descending"
+			: "Files sorted descending; select to sort ascending";
+		button.setAttribute("aria-label", label);
+		button.setAttribute("title", label);
 	}
 
 	private renderFiles(preserveScroll = false): void {
@@ -98,81 +169,43 @@ export class AudioFilePickerModal extends Modal {
 	private renderFileList(listEl: HTMLElement): void {
 		listEl.empty();
 		this.previewButtons.clear();
-		const query = this.query.trim().toLowerCase();
-		const files = this.audioFiles().filter(file => !query || file.path.toLowerCase().includes(query));
-		const renderGeneration = ++this.renderGeneration;
+		const query = this.query.trim();
+		const files = selectAudioLibraryFiles(this.audioFiles(), this.selectedFolder, query, this.sortDirection);
 		if (files.length === 0) {
 			listEl.createDiv({
 				cls: "rpg-audio-file-picker-empty",
-				text: query ? "No matching audio files." : "No supported audio files were found in the vault.",
+				text: query || this.selectedFolder !== null
+					? "No matching audio files."
+					: "No supported audio files were found in the vault.",
 			});
 		}
-		for (const [folderIndex, folder] of groupAudioFilesByFolder(files).entries()) {
-			const heading = listEl.createDiv({cls: "rpg-audio-file-picker-folder"});
-			heading.setAttribute("role", "heading");
-			heading.setAttribute("aria-level", "3");
-			const contentId = `rpg-audio-file-picker-${this.pickerId}-${renderGeneration}-${folderIndex}`;
-			const toggle = heading.createEl("button", {cls: "rpg-audio-file-picker-folder-toggle"});
-			const chevron = toggle.createSpan({cls: "rpg-audio-file-picker-folder-chevron"});
-			setIcon(chevron, "chevron-down");
-			chevron.setAttribute("aria-hidden", "true");
-			toggle.createSpan({cls: "rpg-audio-file-picker-folder-name", text: folder.label});
-			toggle.createSpan({
-				cls: "rpg-audio-file-picker-folder-count",
-				text: String(folder.files.length),
-				attr: {"aria-label": `${folder.files.length} ${folder.files.length === 1 ? "file" : "files"}`},
+		for (const file of files) {
+			const path = pathForAudioBlock(file, this.options.audioFolder);
+			const row = listEl.createDiv({cls: "rpg-audio-file-picker-row"});
+			const label = row.createEl("label", {cls: "rpg-audio-file-picker-selection"});
+			const selector = label.createEl("input", {type: audioFileSelectionInputType(this.options.multiple)});
+			if (this.options.multiple === false) selector.name = `rpg-audio-file-picker-${this.pickerId}-selection`;
+			selector.checked = this.selected.has(path);
+			selector.addEventListener("change", () => {
+				if (this.options.multiple === false) this.selected.clear();
+				if (selector.checked) this.selected.add(path);
+				else this.selected.delete(path);
+				if (this.options.multiple === false) this.renderFiles(true);
+				this.updateFooter();
 			});
-			toggle.setAttribute("aria-controls", contentId);
-
-			const folderContent = listEl.createDiv({cls: "rpg-audio-file-picker-folder-content"});
-			folderContent.id = contentId;
-			folderContent.setAttribute("role", "group");
-			folderContent.setAttribute("aria-label", folder.label);
-			const setExpanded = (expanded: boolean) => {
-				if (expanded) this.collapsedFolders.delete(folder.label);
-				else this.collapsedFolders.add(folder.label);
-				toggle.setAttribute("aria-expanded", String(expanded));
-				toggle.setAttribute("title", `${expanded ? "Collapse" : "Expand"} ${folder.label}`);
-				chevron.toggleClass("is-collapsed", !expanded);
-				folderContent.hidden = !expanded;
-			};
-			setExpanded(!this.collapsedFolders.has(folder.label));
-			toggle.addEventListener("click", () => {
-				const expanded = toggle.getAttribute("aria-expanded") !== "true";
-				if (!expanded && folder.files.some(file => pathForAudioBlock(file, this.options.audioFolder) === this.previewController.activePath)) {
-					this.previewController.stop();
-				}
-				setExpanded(expanded);
+			const details = label.createDiv({cls: "rpg-audio-file-picker-row-details"});
+			details.createDiv({cls: "rpg-audio-file-picker-name", text: file.name});
+			details.createDiv({cls: "rpg-audio-file-picker-path", text: file.path, attr: {title: file.path}});
+			const preview = row.createEl("button", {
+				cls: "rpg-audio-file-picker-preview",
+				attr: {type: "button"},
 			});
-
-			for (const file of folder.files) {
-				const path = pathForAudioBlock(file, this.options.audioFolder);
-				const row = folderContent.createDiv({cls: "rpg-audio-file-picker-row"});
-				const label = row.createEl("label", {cls: "rpg-audio-file-picker-selection"});
-				const selector = label.createEl("input", {type: audioFileSelectionInputType(this.options.multiple)});
-				if (this.options.multiple === false) selector.name = `rpg-audio-file-picker-${this.pickerId}-selection`;
-				selector.checked = this.selected.has(path);
-				selector.addEventListener("change", () => {
-					if (this.options.multiple === false) this.selected.clear();
-					if (selector.checked) this.selected.add(path);
-					else this.selected.delete(path);
-					if (this.options.multiple === false) this.renderFiles(true);
-					this.updateFooter();
-				});
-				const details = label.createDiv({cls: "rpg-audio-file-picker-row-details"});
-				details.createDiv({cls: "rpg-audio-file-picker-name", text: file.name});
-				details.createDiv({cls: "rpg-audio-file-picker-path", text: file.path, attr: {title: file.path}});
-				const preview = row.createEl("button", {
-					cls: "rpg-audio-file-picker-preview",
-					attr: {type: "button"},
-				});
-				this.previewButtons.set(path, {button: preview, name: file.name});
-				preview.addEventListener("click", event => {
-					event.preventDefault();
-					event.stopPropagation();
-					this.previewController.toggle(path, this.app.vault.getResourcePath(file));
-				});
-			}
+			this.previewButtons.set(path, {button: preview, name: file.name});
+			preview.addEventListener("click", event => {
+				event.preventDefault();
+				event.stopPropagation();
+				this.previewController.toggle(path, this.app.vault.getResourcePath(file));
+			});
 		}
 		const activePath = this.previewController.activePath;
 		if (activePath && !this.previewButtons.has(activePath)) this.previewController.stop();
