@@ -40,6 +40,7 @@ export interface RpgAudioSettings {
 	defaultAudioBlockAutoplay: boolean;
 	defaultAudioBlockPlaylistEndAction: PlaylistEndAction;
 	defaultAudioBlockFadeIn: number;
+	/** Runtime fade-out default for blocks that omit "fadeout", in seconds. */
 	defaultAudioBlockFadeOut: number;
 	defaultAudioBlockVolume: number;
 	customAudioBlockTypes: AudioBlockTypeDefinition[];
@@ -380,7 +381,7 @@ export class RpgAudioSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Default fade out")
-			.setDesc("Fade-out duration copied into new blocks, in seconds. Set to 0 to omit it.")
+			.setDesc("Fade-out duration, in seconds, inherited at runtime by every block that omits \"fadeout\". Set to 0 to disable the default; an explicit per-block value, including 0, overrides it. Re-render open blocks after changing this setting.")
 			.addSlider(slider => slider
 				.setLimits(0, 120, 1)
 				.setValue(this.plugin.settings.defaultAudioBlockFadeOut)

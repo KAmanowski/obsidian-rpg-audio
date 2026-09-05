@@ -8,6 +8,8 @@ export interface AudioBlockParseResult {
 export interface AudioBlockDefaults {
 	/** Playlist crossfade applied when a block omits "crossfade", in seconds. */
 	playlistCrossfadeDuration: number;
+	/** Track fade-out applied when a block omits "fadeout", in seconds. Zero disables the default fade. */
+	fadeOutDuration: number;
 	/** Volume fade target applied when a block omits "volume-fade-to". Ignored unless volumeFadeDuration is above 0. */
 	volumeFadeTarget: number;
 	/** Volume fade duration applied when a block omits "volume-fade-duration", in seconds. Zero disables the default fade. */
@@ -16,6 +18,7 @@ export interface AudioBlockDefaults {
 
 const NO_DEFAULTS: AudioBlockDefaults = {
 	playlistCrossfadeDuration: 0,
+	fadeOutDuration: 0,
 	volumeFadeTarget: 0.5,
 	volumeFadeDuration: 0,
 };
@@ -161,6 +164,7 @@ export function parseAudioBlockDetailed(source: string, defaults: AudioBlockDefa
 	let endTime: number | null = null;
 	let fadeInDuration = 0;
 	let fadeOutDuration = 0;
+	let sawFadeOut = false;
 	let volume = 1;
 	let volumeFadeTarget: number | null = null;
 	let volumeFadeDuration = 0;
@@ -263,6 +267,7 @@ export function parseAudioBlockDetailed(source: string, defaults: AudioBlockDefa
 				break;
 			}
 			case "fadeout": {
+				sawFadeOut = true;
 				const parsed = parseNonNegativeSeconds(value);
 				if (parsed === null) errors.push(`Line ${line.number}: "fadeout" must be zero or a positive number of seconds.`);
 				else fadeOutDuration = parsed;
@@ -320,6 +325,7 @@ export function parseAudioBlockDetailed(source: string, defaults: AudioBlockDefa
 
 	if (!type) type = entries.length > 1 ? "playlist" : "sfx";
 	if (!sawPlaylistCrossfade) playlistCrossfadeDuration = defaults.playlistCrossfadeDuration;
+	if (!sawFadeOut) fadeOutDuration = defaults.fadeOutDuration;
 	if (!sawVolumeFadeTarget && !sawVolumeFadeDuration) {
 		volumeFadeTarget = defaults.volumeFadeTarget;
 		volumeFadeDuration = defaults.volumeFadeDuration;

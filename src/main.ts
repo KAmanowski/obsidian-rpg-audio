@@ -37,6 +37,7 @@ export default class RpgAudioPlugin extends Plugin {
 			};
 			const result = parseAudioBlockDetailed(source, {
 				playlistCrossfadeDuration: this.settings.defaultPlaylistCrossfade,
+				fadeOutDuration: this.settings.defaultAudioBlockFadeOut,
 				volumeFadeTarget: this.settings.defaultVolumeFadeTarget,
 				volumeFadeDuration: this.settings.defaultVolumeFadeDuration,
 			});
